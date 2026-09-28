@@ -1,0 +1,86 @@
+# AI code review on pull requests: alibaba/open-code-review + Gemini free tier.
+# Advisory only. NOT a required status check: an LLM outage or quota limit must
+# never block a merge. Free-tier prompts are used by Google for training; fine
+# for this public repo, never reuse this setup on employer code.
+name: ai-review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions: {}
+
+concurrency:
+  group: ai-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: ai-review
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    # Skip drafts (save quota), Dependabot (gets no repo secrets), and fork PRs
+    # (get no secrets under pull_request, by design).
+    if: >-
+      !github.event.pull_request.draft
+      && github.actor != 'dependabot[bot]'
+      && github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read # the action checks out the base and fetches the PR head
+      pull-requests: write # post inline review comments and the summary comment
+    env:
+      # OpenAI-compatible endpoint of the Gemini API. The action wants the full
+      # chat-completions URL, not a base URL.
+      OCR_URL: https://generativelanguage.googleapis.com/v1beta/openai/chat/completions
+      OCR_MODEL: gemini-2.5-flash
+    steps:
+      - name: Preflight (key present and accepted, model available)
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ -z "${GEMINI_API_KEY}" ]; then
+            echo "::error::Secret GEMINI_API_KEY is missing or empty."
+            exit 1
+          fi
+          code=$(curl -s -o models.json -w '%{http_code}' \
+            -H "Authorization: Bearer ${GEMINI_API_KEY}" \
+            https://generativelanguage.googleapis.com/v1beta/openai/models)
+          if [ "${code}" != "200" ]; then
+            echo "::error::Gemini API returned HTTP ${code} for the model list; the key is invalid or the API is not enabled."
+            jq -r '.error.message? // empty' models.json || true
+            exit 1
+          fi
+          jq -r '.data[].id | sub("^models/"; "")' models.json | sort > models.txt
+          echo "Available Flash models:"
+          grep -i flash models.txt || true
+          if ! grep -qx "${OCR_MODEL}" models.txt; then
+            echo "::error::Model '${OCR_MODEL}' is not available to this key. Pick one from the list above."
+            exit 1
+          fi
+          echo "Key accepted; model ${OCR_MODEL} available."
+
+      - name: Review
+        uses: alibaba/open-code-review@579b9319151aa734f2d25df6e59efa59eec5a577 # v1.12.10
+        with:
+          # The action installs the CLI from npm at run time; pinning the action
+          # SHA alone would still run whatever 'latest' is. Pin both.
+          ocr_version: "1.12.10"
+          llm_url: ${{ env.OCR_URL }}
+          llm_auth_token: ${{ secrets.GEMINI_API_KEY }}
+          llm_model: ${{ env.OCR_MODEL }}
+          llm_protocol: openai
+          llm_use_anthropic: "false"
+          # The default body adds a 'thinking' field for other providers; Gemini's
+          # OpenAI-compatible endpoint does not know it.
+          llm_extra_body: "{}"
+          # Free tier: requests-per-minute limits. One file at a time, capped tokens.
+          review_concurrency: "1"
+          max_tokens_budget: "300000"
+          # Later pushes review only new commits and never repeat old comments.
+          sticky_summary: "true"
+          incremental: "true"
+          checkpoint_range: "true"
+          # Artifacts on a public repo are downloadable by anyone; the raw log is
+          # not something to publish.
+          upload_artifacts: "false"
+          stream_progress: "true"
