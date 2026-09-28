@@ -34,7 +34,7 @@ jobs:
       OCR_URL: https://generativelanguage.googleapis.com/v1beta/openai/chat/completions
       OCR_MODEL: gemini-2.5-flash
     steps:
-      - name: Preflight (key present and accepted, model available)
+      - name: Preflight (key present, model answers a real request)
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
@@ -42,22 +42,28 @@ jobs:
             echo "::error::Secret GEMINI_API_KEY is missing or empty."
             exit 1
           fi
-          code=$(curl -s -o models.json -w '%{http_code}' \
-            -H "Authorization: Bearer ${GEMINI_API_KEY}" \
-            https://generativelanguage.googleapis.com/v1beta/openai/models)
-          if [ "${code}" != "200" ]; then
-            echo "::error::Gemini API returned HTTP ${code} for the model list; the key is invalid or the API is not enabled."
-            jq -r '.error.message? // empty' models.json || true
-            exit 1
+          # A model can appear in /models and still be refused for this key
+          # (e.g. "no longer available to new users"), so probe with the same
+          # kind of call the review makes: a real chat completion.
+          probe() {
+            curl -s -o probe.json -w '%{http_code}' "${OCR_URL}" \
+              -H "Authorization: Bearer ${GEMINI_API_KEY}" \
+              -H "Content-Type: application/json" \
+              -d "{\"model\":\"$1\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply with: ok\"}],\"max_tokens\":5}"
+          }
+          code=$(probe "${OCR_MODEL}")
+          if [ "${code}" = "200" ]; then
+            echo "Key accepted; ${OCR_MODEL} answered."
+            exit 0
           fi
-          jq -r '.data[].id | sub("^models/"; "")' models.json | sort > models.txt
-          echo "Available Flash models:"
-          grep -i flash models.txt || true
-          if ! grep -qx "${OCR_MODEL}" models.txt; then
-            echo "::error::Model '${OCR_MODEL}' is not available to this key. Pick one from the list above."
-            exit 1
-          fi
-          echo "Key accepted; model ${OCR_MODEL} available."
+          echo "::error::${OCR_MODEL} returned HTTP ${code}: $(jq -r '.[0].error.message? // .error.message? // "no message"' probe.json)"
+          # Diagnostic only on failure: which listed Flash models answer right now?
+          curl -s -H "Authorization: Bearer ${GEMINI_API_KEY}" \
+            https://generativelanguage.googleapis.com/v1beta/openai/models \
+            | jq -r '.data[].id | sub("^models/"; "")' \
+            | grep -iE 'flash' | grep -viE 'image|audio|tts' | sort \
+            | while read -r m; do echo "  $(probe "$m") $m"; sleep 2; done
+          exit 1
 
       - name: Review
         uses: alibaba/open-code-review@579b9319151aa734f2d25df6e59efa59eec5a577 # v1.12.10
