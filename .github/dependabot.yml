@@ -1,0 +1,74 @@
+# Dependabot version updates: weekly PRs that bump pinned dependencies.
+# Security updates (PRs for known vulnerabilities) are enabled in repo settings
+# and run independently of this schedule; cooldown does not delay them.
+#
+# Directories for pip, docker and terraform are created in later phases
+# (app/ in Phase 2, terraform/ in Phase 1). Until they exist, Dependabot
+# reports "dependency file not found" for those entries; that is expected.
+version: 2
+
+updates:
+  # Workflows and composite actions under .github/. Pairs with #4: actions are
+  # pinned to a commit SHA and Dependabot keeps the SHA and its version comment current.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Bucharest"
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # FastAPI app (requirements.txt / pyproject.toml).
+  # If Phase 2 settles on uv, switch this to package-ecosystem "uv".
+  - package-ecosystem: "pip"
+    directory: "/app"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Bucharest"
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      python-minor-patch:
+        update-types: ["minor", "patch"]
+
+  # Base images in app/Dockerfile (pinned by digest; Dependabot bumps tag and digest).
+  - package-ecosystem: "docker"
+    directory: "/app"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Bucharest"
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: "chore(deps)"
+
+  # Terraform provider and module versions.
+  - package-ecosystem: "terraform"
+    directories:
+      - "/terraform/bootstrap"
+      - "/terraform/main"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Bucharest"
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      terraform:
+        patterns: ["*"]
