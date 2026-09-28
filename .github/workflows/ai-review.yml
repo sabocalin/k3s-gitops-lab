@@ -32,7 +32,7 @@ jobs:
       # OpenAI-compatible endpoint of the Gemini API. The action wants the full
       # chat-completions URL, not a base URL.
       OCR_URL: https://generativelanguage.googleapis.com/v1beta/openai/chat/completions
-      OCR_MODEL: gemini-2.5-flash
+      OCR_MODEL: gemini-3.6-flash
     steps:
       - name: Preflight (key present, model answers a real request)
         env:
