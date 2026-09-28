@@ -1,0 +1,11 @@
+name: neg-control
+on: workflow_dispatch
+permissions: {}
+jobs:
+  j:
+    runs-on: ubuntu-24.04
+    permissions: {}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
