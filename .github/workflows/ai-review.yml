@@ -34,26 +34,59 @@ jobs:
       OCR_URL: https://generativelanguage.googleapis.com/v1beta/openai/chat/completions
       OCR_MODEL: gemini-3.6-flash
     steps:
-      - name: TEMP diagnostic - measure free-tier RPM per model
+      - name: Preflight (key present, model answers a real request)
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
+          if [ -z "${GEMINI_API_KEY}" ]; then
+            echo "::error::Secret GEMINI_API_KEY is missing or empty."
+            exit 1
+          fi
+          # A model can appear in /models and still be refused for this key
+          # (e.g. "no longer available to new users"), so probe with the same
+          # kind of call the review makes: a real chat completion.
           probe() {
             curl -s -o probe.json -w '%{http_code}' "${OCR_URL}" \
               -H "Authorization: Bearer ${GEMINI_API_KEY}" \
               -H "Content-Type: application/json" \
-              -d "{\"model\":\"$1\",\"messages\":[{\"role\":\"user\",\"content\":\"ok\"}],\"max_tokens\":3}"
+              -d "{\"model\":\"$1\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply with: ok\"}],\"max_tokens\":5}"
           }
-          for m in gemini-3.6-flash gemini-3.7-flash gemini-3.8-flash gemini-3.5-flash-lite gemini-3.1-flash-lite gemini-flash-lite-latest; do
-            codes=""; limit="-"
-            for i in 1 2 3 4 5 6 7; do
-              c=$(probe "$m"); codes="$codes $c"
-              if [ "$c" = "429" ]; then
-                limit=$(jq -r '.[0].error.details[]? | select(."@type"|endswith("QuotaFailure")) | .violations[] | "\(.quotaId)=\(.quotaValue)"' probe.json 2>/dev/null | head -1)
-                break
-              fi
-            done
-            echo "RESULT $m:$codes | $limit"
-          done
+          code=$(probe "${OCR_MODEL}")
+          if [ "${code}" = "200" ]; then
+            echo "Key accepted; ${OCR_MODEL} answered."
+            exit 0
+          fi
+          echo "::error::${OCR_MODEL} returned HTTP ${code}: $(jq -r '.[0].error.message? // .error.message? // "no message"' probe.json)"
+          # Diagnostic only on failure: which listed Flash models answer right now?
+          curl -s -H "Authorization: Bearer ${GEMINI_API_KEY}" \
+            https://generativelanguage.googleapis.com/v1beta/openai/models \
+            | jq -r '.data[].id | sub("^models/"; "")' \
+            | grep -iE 'flash' | grep -viE 'image|audio|tts' | sort \
+            | while read -r m; do echo "  $(probe "$m") $m"; sleep 2; done
           exit 1
 
+      - name: Review
+        uses: alibaba/open-code-review@579b9319151aa734f2d25df6e59efa59eec5a577 # v1.12.10
+        with:
+          # The action installs the CLI from npm at run time; pinning the action
+          # SHA alone would still run whatever 'latest' is. Pin both.
+          ocr_version: "1.12.10"
+          llm_url: ${{ env.OCR_URL }}
+          llm_auth_token: ${{ secrets.GEMINI_API_KEY }}
+          llm_model: ${{ env.OCR_MODEL }}
+          llm_protocol: openai
+          llm_use_anthropic: "false"
+          # The default body adds a 'thinking' field for other providers; Gemini's
+          # OpenAI-compatible endpoint does not know it.
+          llm_extra_body: "{}"
+          # Free tier: requests-per-minute limits. One file at a time, capped tokens.
+          review_concurrency: "1"
+          max_tokens_budget: "300000"
+          # Later pushes review only new commits and never repeat old comments.
+          sticky_summary: "true"
+          incremental: "true"
+          checkpoint_range: "true"
+          # Artifacts on a public repo are downloadable by anyone; the raw log is
+          # not something to publish.
+          upload_artifacts: "false"
+          stream_progress: "true"
