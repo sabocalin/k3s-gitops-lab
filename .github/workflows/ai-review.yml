@@ -1,4 +1,4 @@
-# AI code review on pull requests: alibaba/open-code-review + Gemini free tier.
+# AI code review on pull requests: one Gemini request per run (.github/scripts/ai_review.py).
 # Advisory only. NOT a required status check: an LLM outage or quota limit must
 # never block a merge. Free-tier prompts are used by Google for training; fine
 # for this public repo, never reuse this setup on employer code.
@@ -18,7 +18,7 @@ jobs:
   review:
     name: ai-review
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 15
     # Skip drafts (save quota), Dependabot (gets no repo secrets), and fork PRs
     # (get no secrets under pull_request, by design).
     if: >-
@@ -26,67 +26,29 @@ jobs:
       && github.actor != 'dependabot[bot]'
       && github.event.pull_request.head.repo.full_name == github.repository
     permissions:
-      contents: read # the action checks out the base and fetches the PR head
-      pull-requests: write # post inline review comments and the summary comment
-    env:
-      # OpenAI-compatible endpoint of the Gemini API. The action wants the full
-      # chat-completions URL, not a base URL.
-      OCR_URL: https://generativelanguage.googleapis.com/v1beta/openai/chat/completions
-      OCR_MODEL: gemini-3.6-flash
+      contents: read # read the repository and its history to build the diff
+      pull-requests: write # post the review and its line comments
     steps:
-      - name: Preflight (key present, model answers a real request)
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: |
-          if [ -z "${GEMINI_API_KEY}" ]; then
-            echo "::error::Secret GEMINI_API_KEY is missing or empty."
-            exit 1
-          fi
-          # A model can appear in /models and still be refused for this key
-          # (e.g. "no longer available to new users"), so probe with the same
-          # kind of call the review makes: a real chat completion.
-          probe() {
-            curl -s -o probe.json -w '%{http_code}' "${OCR_URL}" \
-              -H "Authorization: Bearer ${GEMINI_API_KEY}" \
-              -H "Content-Type: application/json" \
-              -d "{\"model\":\"$1\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply with: ok\"}],\"max_tokens\":5}"
-          }
-          code=$(probe "${OCR_MODEL}")
-          if [ "${code}" = "200" ]; then
-            echo "Key accepted; ${OCR_MODEL} answered."
-            exit 0
-          fi
-          echo "::error::${OCR_MODEL} returned HTTP ${code}: $(jq -r '.[0].error.message? // .error.message? // "no message"' probe.json)"
-          # Diagnostic only on failure: which listed Flash models answer right now?
-          curl -s -H "Authorization: Bearer ${GEMINI_API_KEY}" \
-            https://generativelanguage.googleapis.com/v1beta/openai/models \
-            | jq -r '.data[].id | sub("^models/"; "")' \
-            | grep -iE 'flash' | grep -viE 'image|audio|tts' | sort \
-            | while read -r m; do echo "  $(probe "$m") $m"; sleep 2; done
-          exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # full history: the diff needs the merge base and the previous push
+          persist-credentials: false
+
+      - name: Unit tests for the reviewer script
+        run: python3 -m unittest discover -s .github/scripts -v
 
       - name: Review
-        uses: alibaba/open-code-review@579b9319151aa734f2d25df6e59efa59eec5a577 # v1.12.10
-        with:
-          # The action installs the CLI from npm at run time; pinning the action
-          # SHA alone would still run whatever 'latest' is. Pin both.
-          ocr_version: "1.12.10"
-          llm_url: ${{ env.OCR_URL }}
-          llm_auth_token: ${{ secrets.GEMINI_API_KEY }}
-          llm_model: ${{ env.OCR_MODEL }}
-          llm_protocol: openai
-          llm_use_anthropic: "false"
-          # The default body adds a 'thinking' field for other providers; Gemini's
-          # OpenAI-compatible endpoint does not know it.
-          llm_extra_body: "{}"
-          # Free tier: requests-per-minute limits. One file at a time, capped tokens.
-          review_concurrency: "1"
-          max_tokens_budget: "300000"
-          # Later pushes review only new commits and never repeat old comments.
-          sticky_summary: "true"
-          incremental: "true"
-          checkpoint_range: "true"
-          # Artifacts on a public repo are downloadable by anyone; the raw log is
-          # not something to publish.
-          upload_artifacts: "false"
-          stream_progress: "true"
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+          # OpenAI-compatible Gemini endpoint (full chat-completions URL).
+          LLM_URL: https://generativelanguage.googleapis.com/v1beta/openai/chat/completions
+          # gemini-2.5-flash is retired for new keys; see docs/learning/57-ai-review.md.
+          MODEL: gemini-3.6-flash
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+          EVENT_ACTION: ${{ github.event.action }}
+        run: python3 .github/scripts/ai_review.py
