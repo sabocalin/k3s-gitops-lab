@@ -9,3 +9,4 @@ verified, and what surprised us. New notes start from [`_template.md`](_template
 | #4 | [Pin all GitHub Actions to a commit SHA](4-pin-actions.md) | 0 |
 | #5 | [README: cost model and "never create" list](5-readme-cost-model.md) | 0 |
 | #6 | [Ruleset on `main`](6-main-ruleset.md) | 0 |
+| #57 | [AI code review on pull requests](57-ai-review.md) | 0 |
