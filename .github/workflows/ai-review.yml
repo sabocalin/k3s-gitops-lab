@@ -43,8 +43,10 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           # OpenAI-compatible Gemini endpoint (full chat-completions URL).
           LLM_URL: https://generativelanguage.googleapis.com/v1beta/openai/chat/completions
-          # gemini-2.5-flash is retired for new keys; see docs/learning/57-ai-review.md.
-          MODEL: gemini-3.6-flash
+          # Tried in order. Free-tier quotas are per model (measured for 3.6-flash:
+          # 5/min, 20/day), so a fallback list multiplies capacity. gemini-2.5-flash is retired for new
+          # keys; see docs/learning/57-ai-review.md.
+          MODELS: gemini-3.6-flash,gemini-3.8-flash,gemini-3.1-flash-lite
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}

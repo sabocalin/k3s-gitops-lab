@@ -1,6 +1,9 @@
 """Unit tests for ai_review.py (stdlib unittest; run: python3 -m unittest discover .github/scripts)."""
+import io
 import json
 import unittest
+import urllib.error
+from unittest import mock
 
 import ai_review
 
@@ -85,6 +88,32 @@ class RetryDelay(unittest.TestCase):
 
     def test_backoff_without_retry_info(self):
         self.assertTrue(30 <= ai_review.retry_delay("not json", 1) <= 33)
+
+
+def http_error(code, body):
+    return urllib.error.HTTPError("u", code, "err", {}, io.BytesIO(json.dumps(body).encode()))
+
+
+class Fallback(unittest.TestCase):
+    def test_skips_exhausted_and_retired_models(self):
+        per_day = [{"error": {"details": [{"@type": "type.googleapis.com/google.rpc.QuotaFailure",
+                    "violations": [{"quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+                                    "quotaValue": "20"}]}]}}]
+        replies = {"m1": http_error(429, per_day), "m2": http_error(404, {"error": {"message": "gone"}})}
+
+        def fake(url, payload, headers, method="POST"):
+            if payload["model"] in replies:
+                raise replies[payload["model"]]
+            return {"choices": [{"message": {"content": "{}"}}]}
+
+        with mock.patch.object(ai_review, "http_json", side_effect=fake):
+            model, reply = ai_review.call_llm("u", "k", ["m1", "m2", "m3"], "diff")
+        self.assertEqual((model, reply), ("m3", "{}"))
+
+    def test_all_models_fail_exits_with_error(self):
+        with mock.patch.object(ai_review, "http_json", side_effect=http_error(404, {})):
+            with self.assertRaises(SystemExit):
+                ai_review.call_llm("u", "k", ["m1", "m2"], "diff")
 
 
 if __name__ == "__main__":

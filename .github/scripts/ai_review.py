@@ -26,7 +26,8 @@ import urllib.request
 MAX_DIFF_CHARS = 100_000  # ~25K tokens; bigger diffs are truncated with a note
 MAX_FINDINGS = 10
 MAX_COMMENT_CHARS = 1500
-RETRY_DEADLINE_S = 300  # total time allowed for retrying 429/5xx
+RETRY_DEADLINE_S = 480  # total time allowed for retrying 429/5xx across all models
+MAX_ATTEMPTS_PER_MODEL = 3
 RETRYABLE = {429, 500, 502, 503, 504}
 EXCLUDES = [":(exclude)*.lock", ":(exclude)*-lock.json", ":(exclude)*.svg",
             ":(exclude)*.png", ":(exclude)*.jpg"]
@@ -157,32 +158,46 @@ def quota_ids(body):
         return "unparseable body"
 
 
-def call_llm(url, key, model, diff):
+class NextModel(Exception):
+    """This model cannot serve the request today; try the next one in the list."""
+
+
+def call_model(url, key, model, diff, deadline):
     payload = {"model": model, "temperature": 0.2, "max_tokens": 4096,
                "messages": [{"role": "system", "content": SYSTEM_PROMPT},
                             {"role": "user", "content": diff}]}
-    deadline, attempt = time.monotonic() + RETRY_DEADLINE_S, 0
-    while True:
-        attempt += 1
+    for attempt in range(1, MAX_ATTEMPTS_PER_MODEL + 1):
         try:
             reply = http_json(url, payload, {"Authorization": f"Bearer {key}"})
-            print(f"LLM attempt {attempt}: ok")
+            print(f"{model} attempt {attempt}: ok")
             return reply["choices"][0]["message"]["content"]
         except urllib.error.HTTPError as e:
             body = e.read().decode(errors="replace")
+            if e.code == 429 and "PerDay" in quota_ids(body):
+                raise NextModel(f"daily quota exhausted ({quota_ids(body)})")
+            if e.code == 404:
+                raise NextModel(f"HTTP 404: {body[:300]}")
             if e.code not in RETRYABLE:
-                sys.exit(f"::error::LLM returned HTTP {e.code} (not retryable): {body[:800]}")
+                sys.exit(f"::error::{model} returned HTTP {e.code} (not retryable): {body[:800]}")
             wait = retry_delay(body, attempt)
-            if e.code == 429:
-                print(f"LLM attempt {attempt}: quota hit: {quota_ids(body)}")
-                if "PerDay" in quota_ids(body):
-                    sys.exit("::error::Daily free-tier quota exhausted; retrying today is pointless. "
-                             "It resets at midnight Pacific time.")
-            if time.monotonic() + wait > deadline:
-                sys.exit(f"::error::LLM still returning HTTP {e.code} after {attempt} attempts "
-                         f"({RETRY_DEADLINE_S}s budget). Free-tier quota or capacity; try a later push.")
-            print(f"LLM attempt {attempt}: HTTP {e.code}, retrying in {wait:.0f}s")
+            detail = quota_ids(body) if e.code == 429 else "overloaded/unavailable"
+            if attempt == MAX_ATTEMPTS_PER_MODEL or time.monotonic() + wait > deadline:
+                raise NextModel(f"HTTP {e.code} after {attempt} attempt(s): {detail}")
+            print(f"{model} attempt {attempt}: HTTP {e.code} ({detail}), retrying in {wait:.0f}s")
             time.sleep(wait)
+    raise NextModel("no attempts left")
+
+
+def call_llm(url, key, models, diff):
+    """Try each model in order; per-model free-tier quotas make a fallback list useful."""
+    deadline = time.monotonic() + RETRY_DEADLINE_S
+    for model in models:
+        try:
+            return model, call_model(url, key, model, diff, deadline)
+        except NextModel as why:
+            print(f"{model}: skipped, {why}")
+    sys.exit(f"::error::No model could review this push ({', '.join(models)}). "
+             "Free-tier quota or capacity; see the log above for each model's reason.")
 
 
 def post_review(repo, pr, head_sha, token, body, inline):
@@ -210,7 +225,8 @@ def main():
     ap.add_argument("--fake-response", help="file with a model reply, skips the LLM call")
     args = ap.parse_args()
 
-    model = os.environ.get("MODEL", "unknown-model")
+    models = [m.strip() for m in os.environ.get("MODELS", "").split(",") if m.strip()]
+    model = models[0] if models else "unknown-model"
     before, action = os.environ.get("BEFORE_SHA", ""), os.environ.get("EVENT_ACTION", "")
 
     # Full PR diff decides which lines may carry a comment.
@@ -237,7 +253,9 @@ def main():
         key = os.environ.get("GEMINI_API_KEY", "")
         if not key:
             sys.exit("::error::Secret GEMINI_API_KEY is missing or empty.")
-        reply = call_llm(os.environ["LLM_URL"], key, model, review_diff)
+        if not models:
+            sys.exit("::error::MODELS is empty.")
+        model, reply = call_llm(os.environ["LLM_URL"], key, models, review_diff)
 
     try:
         result = extract_json(reply)
