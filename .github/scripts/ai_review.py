@@ -144,6 +144,19 @@ def retry_delay(body, attempt):
     return min(15 * 2 ** attempt, 60) + random.uniform(0, 3)
 
 
+def quota_ids(body):
+    """Quota names from a Google 429 (e.g. ...PerMinute... vs ...PerDay...), for the log."""
+    try:
+        err = json.loads(body)
+        err = err[0] if isinstance(err, list) else err
+        return ", ".join(f"{v.get('quotaId')}={v.get('quotaValue')}"
+                         for d in err.get("error", {}).get("details", [])
+                         if d.get("@type", "").endswith("QuotaFailure")
+                         for v in d.get("violations", [])) or "unknown quota"
+    except (ValueError, AttributeError, IndexError, TypeError):
+        return "unparseable body"
+
+
 def call_llm(url, key, model, diff):
     payload = {"model": model, "temperature": 0.2, "max_tokens": 4096,
                "messages": [{"role": "system", "content": SYSTEM_PROMPT},
@@ -160,6 +173,11 @@ def call_llm(url, key, model, diff):
             if e.code not in RETRYABLE:
                 sys.exit(f"::error::LLM returned HTTP {e.code} (not retryable): {body[:800]}")
             wait = retry_delay(body, attempt)
+            if e.code == 429:
+                print(f"LLM attempt {attempt}: quota hit: {quota_ids(body)}")
+                if "PerDay" in quota_ids(body):
+                    sys.exit("::error::Daily free-tier quota exhausted; retrying today is pointless. "
+                             "It resets at midnight Pacific time.")
             if time.monotonic() + wait > deadline:
                 sys.exit(f"::error::LLM still returning HTTP {e.code} after {attempt} attempts "
                          f"({RETRY_DEADLINE_S}s budget). Free-tier quota or capacity; try a later push.")

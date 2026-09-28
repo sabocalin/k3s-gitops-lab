@@ -76,6 +76,13 @@ class RetryDelay(unittest.TestCase):
             {"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "35s"}]}}])
         self.assertEqual(ai_review.retry_delay(body, 1), 36.0)
 
+    def test_quota_ids_names_the_violated_quota(self):
+        body = json.dumps([{"error": {"details": [
+            {"@type": "type.googleapis.com/google.rpc.QuotaFailure", "violations": [
+                {"quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier", "quotaValue": "20"}]}]}}])
+        self.assertEqual(ai_review.quota_ids(body), "GenerateRequestsPerDayPerProjectPerModel-FreeTier=20")
+        self.assertEqual(ai_review.quota_ids("garbage"), "unparseable body")
+
     def test_backoff_without_retry_info(self):
         self.assertTrue(30 <= ai_review.retry_delay("not json", 1) <= 33)
 
