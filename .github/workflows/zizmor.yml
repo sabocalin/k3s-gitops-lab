@@ -1,0 +1,38 @@
+# Static security audit of GitHub Actions workflows (and dependabot.yml).
+# Fails on any finding, including an action referenced by tag instead of commit SHA.
+# Runs on every PR, not only ones touching .github/, because it is a required
+# status check: a required check that never reports blocks the merge.
+name: zizmor
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Deny everything at workflow level; each job asks for exactly what it needs.
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  zizmor:
+    name: zizmor
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Do not leave the token in .git/config for later steps to read.
+          persist-credentials: false
+
+      - name: Audit workflows
+        env:
+          # Enables zizmor's online audits (impostor commits, known-vulnerable
+          # actions, ref confusion). Read-only token, public API calls only.
+          GH_TOKEN: ${{ github.token }}
+          # Exact version. Dependabot cannot see this pin; bump it by hand.
+          ZIZMOR_VERSION: "1.30.1"
+        run: pipx run "zizmor==${ZIZMOR_VERSION}" --format=github .

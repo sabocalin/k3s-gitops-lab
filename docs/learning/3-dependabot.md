@@ -54,10 +54,11 @@ One file: `.github/dependabot.yml`.
 Non-default settings:
 - **Schedule** weekly, Monday 06:00 Europe/Bucharest: one predictable batch a week
   instead of a trickle of PRs.
-- **`cooldown: default-days: 3`**: a new release is only proposed once it is 3 days old.
+- **`cooldown: default-days: 7`**: a new release is only proposed once it is 7 days old.
   Hijacked releases (a maintainer account compromised, a malicious version published)
   are usually noticed and yanked within hours to days; waiting avoids pulling one in.
-  Security updates are not delayed by the cooldown.
+  Security updates are not delayed by the cooldown. (Originally 3 days; raised to 7
+  in #4 after zizmor's `dependabot-cooldown` audit flagged anything under 7.)
 - **Groups** cut PR noise. Majors stay separate for pip because they are the ones that
   break things and deserve their own review.
 - **`commit-message.prefix: chore(deps)`** matches the repo's conventional-commit style.

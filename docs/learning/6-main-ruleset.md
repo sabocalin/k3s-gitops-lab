@@ -45,14 +45,13 @@ Ruleset `main` (id `23989149`), enforcement **Active**, bypass list **empty**
 | Require a pull request, **0 approvals** | GitHub does not let you approve your own PR, so requiring 1 approval would block every merge on a solo repo. |
 | Require conversation resolution | Open review comments block the merge until resolved. |
 | Allowed merge method: squash | One commit per PR on `main`. |
+| Require status checks: `zizmor` (GitHub Actions app, id `15368`) | Added in #4. The workflow security audit must pass before merging. More checks join as CI grows (#21 for `ruff`/`pytest`, #16 for `terraform plan`). |
 
 Repository settings changed alongside:
 - Only squash merging allowed (merge commits and rebase merging off).
 - Squash commit title = PR title, message = PR body.
 - Head branches deleted automatically after merge.
 
-Not enabled yet: **required status checks**. You cannot require a check that has
-never run; they get added once CI exists (#21 for `ruff`/`pytest`, #16 for `terraform plan`).
 
 ## Verification
 - Positive: `gh api repos/sabocalin/k3s-gitops-lab/rules/branches/main` lists
