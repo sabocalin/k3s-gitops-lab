@@ -150,5 +150,29 @@ class Fallback(unittest.TestCase):
                 ai_review.call_llm("u", "k", ["m1", "m2"], "diff")
 
 
+class LastReviewedCommit(unittest.TestCase):
+    BOT, M = ai_review.BOT_LOGIN, ai_review.REVIEW_MARKER
+
+    def review(self, login, body, commit, when):
+        return {"user": {"login": login}, "body": body, "commit_id": commit, "submitted_at": when}
+
+    def test_newest_own_review_wins(self):
+        reviews = [
+            self.review(self.BOT, self.M + " old", "aaa", "2026-09-29T08:00:00Z"),
+            self.review(self.BOT, self.M + " new", "bbb", "2026-09-29T09:00:00Z"),
+            self.review("sabocalin", "LGTM", "ccc", "2026-09-29T10:00:00Z"),       # human
+            self.review(self.BOT, "some other bot review", "ddd", "2026-09-29T11:00:00Z"),
+        ]
+        self.assertEqual(ai_review.last_reviewed_commit(reviews, "head", lambda a, b: True), "bbb")
+
+    def test_none_without_own_review(self):
+        reviews = [self.review("sabocalin", "LGTM", "ccc", "2026-09-29T10:00:00Z")]
+        self.assertIsNone(ai_review.last_reviewed_commit(reviews, "head", lambda a, b: True))
+
+    def test_force_push_falls_back_to_full_review(self):
+        reviews = [self.review(self.BOT, self.M, "gone", "2026-09-29T09:00:00Z")]
+        self.assertIsNone(ai_review.last_reviewed_commit(reviews, "head", lambda a, b: False))
+
+
 if __name__ == "__main__":
     unittest.main()

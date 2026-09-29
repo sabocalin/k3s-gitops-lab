@@ -31,6 +31,8 @@ RETRY_DEADLINE_S = 480  # total time allowed for retrying 429/5xx across all mod
 MAX_ATTEMPTS_PER_MODEL = 3
 RETRYABLE = {429, 500, 502, 503, 504}
 REQUEST_TIMEOUT_S = 90  # an overloaded model can accept the connection and never answer
+REVIEW_MARKER = "**🤖 AI review**"  # first bytes of every review this script posts
+BOT_LOGIN = "github-actions[bot]"
 EXCLUDES = [":(exclude)*.lock", ":(exclude)*-lock.json", ":(exclude)*.svg",
             ":(exclude)*.png", ":(exclude)*.jpg"]
 
@@ -211,6 +213,30 @@ def call_llm(url, key, models, diff):
              "Free-tier quota or capacity; see the log above for each model's reason.")
 
 
+def github_get(url, token):
+    req = urllib.request.Request(url, headers={
+        "Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28"})
+    with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT_S) as resp:
+        return json.loads(resp.read())
+
+
+def last_reviewed_commit(reviews, head, ancestor=is_ancestor):
+    """Commit of the newest review this script posted, if it is still in head's history.
+
+    Every run posts a review (even with no findings), so the bot's own reviews are the
+    record of what was already reviewed. After a force push the old commit is no longer
+    an ancestor of head, and we fall back to the whole PR.
+    """
+    ours = [r for r in reviews
+            if (r.get("user") or {}).get("login") == BOT_LOGIN
+            and str(r.get("body", "")).startswith(REVIEW_MARKER) and r.get("commit_id")]
+    if not ours:
+        return None
+    newest = max(ours, key=lambda r: r.get("submitted_at") or "")["commit_id"]
+    return newest if ancestor(newest, head) else None
+
+
 def post_review(repo, pr, head_sha, token, body, inline):
     comments = [{"path": f["path"], "line": int(f["line"]), "side": "RIGHT", "body": fmt(f)}
                 for f in inline]
@@ -238,18 +264,25 @@ def main():
 
     models = [m.strip() for m in os.environ.get("MODELS", "").split(",") if m.strip()]
     model = models[0] if models else "unknown-model"
-    before, action = os.environ.get("BEFORE_SHA", ""), os.environ.get("EVENT_ACTION", "")
+    action = os.environ.get("EVENT_ACTION", "")
 
     # Full PR diff decides which lines may carry a comment.
     pr_diff = diff_text(args.base, args.head)
     commentable = added_lines(pr_diff)
 
-    # What the model reads: only the new commits on a normal push, else the whole PR.
-    if action == "synchronize" and before and not set(before) <= {"0"} and is_ancestor(before, args.head):
-        review_diff, scope = git("diff", "--no-color", "--unified=3", f"{before}..{args.head}",
-                                 "--", ".", *EXCLUDES), f"new commits `{before[:7]}..{args.head[:7]}`"
-    else:
-        review_diff, scope = pr_diff, "full PR diff"
+    # What the model reads. Automatic runs (opened / reopened / ready_for_review) review
+    # the whole PR. An on-demand run (label "ai-review") reviews only what changed since
+    # the last AI review, or the whole PR if there was none or history was rewritten.
+    review_diff, scope = pr_diff, "full PR diff"
+    if action == "labeled" and not args.dry_run:
+        reviews = github_get(f"https://api.github.com/repos/{os.environ['REPO']}/pulls/"
+                             f"{os.environ['PR_NUMBER']}/reviews?per_page=100",
+                             os.environ["GITHUB_TOKEN"])
+        since = last_reviewed_commit(reviews, args.head)
+        if since:
+            review_diff = git("diff", "--no-color", "--unified=3", f"{since}..{args.head}",
+                              "--", ".", *EXCLUDES)
+            scope = f"changes since last AI review `{since[:7]}..{args.head[:7]}`"
 
     if not review_diff.strip():
         step_summary(f"AI review: nothing to review ({scope} is empty).")
@@ -276,7 +309,8 @@ def main():
         findings, summary = [], f"(model reply was not valid JSON: {e})\n\n{reply[:2000]}"
     inline, rest = partition(findings, commentable)
 
-    lines = [f"**🤖 AI review** · `{model}` · {scope} · advisory, can be wrong", "", summary]
+    lines = [f"{REVIEW_MARKER} · `{model}` · {scope} · advisory, can be wrong", "",
+             summary or "No findings."]
     if truncated:
         lines += ["", f"⚠️ Diff truncated to {MAX_DIFF_CHARS:,} characters; later files were not reviewed."]
     if rest:
@@ -286,8 +320,9 @@ def main():
 
     step_summary(f"### AI review\n{len(findings)} finding(s): {len(inline)} inline, "
                  f"{len(rest)} in summary. Scope: {scope}.\n\n{body}")
-    if not findings:
-        return  # nothing worth a PR comment; the job summary has the details
+    # Always post, even with no findings: the review records which commit was reviewed
+    # (the next on-demand run starts there). A body-only review opens no conversation,
+    # so it never blocks a merge.
     if args.dry_run:
         print(json.dumps({"inline": inline, "body": body}, indent=2))
         return

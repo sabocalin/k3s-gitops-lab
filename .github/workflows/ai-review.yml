@@ -4,9 +4,12 @@
 # for this public repo, never reuse this setup on employer code.
 name: ai-review
 
+# Automatic once per PR (opened as non-draft, reopened, marked ready), plus on demand
+# by adding the label "ai-review". Pushes do not trigger a review: the free tier allows
+# about 20 requests per model per day.
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, reopened, ready_for_review, labeled]
 
 permissions: {}
 
@@ -19,15 +22,20 @@ jobs:
     name: ai-review
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    # Skip drafts (save quota), Dependabot (gets no repo secrets), and fork PRs
-    # (get no secrets under pull_request, by design).
+    # Run on the "ai-review" label (even on a draft: you asked for it), or automatically
+    # on a non-draft PR. Skip Dependabot (gets no repo secrets) and fork PRs (get no
+    # secrets under pull_request, by design). Adding a label needs write access, so the
+    # on-demand trigger is already limited to people who can push to this repo.
     if: >-
-      !github.event.pull_request.draft
-      && github.actor != 'dependabot[bot]'
+      github.actor != 'dependabot[bot]'
       && github.event.pull_request.head.repo.full_name == github.repository
+      && (
+        (github.event.action == 'labeled' && github.event.label.name == 'ai-review')
+        || (github.event.action != 'labeled' && !github.event.pull_request.draft)
+      )
     permissions:
       contents: read # read the repository and its history to build the diff
-      pull-requests: write # post the review and its line comments
+      pull-requests: write # post the review and its line comments, remove the label
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -51,6 +59,13 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          BEFORE_SHA: ${{ github.event.before }}
           EVENT_ACTION: ${{ github.event.action }}
         run: python3 .github/scripts/ai_review.py
+
+      - name: Remove the ai-review label (so it can be added again)
+        if: always() && github.event.action == 'labeled'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: gh api -X DELETE "repos/${REPO}/issues/${PR_NUMBER}/labels/ai-review" --silent
