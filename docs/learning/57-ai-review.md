@@ -118,6 +118,10 @@ Each step below came from reading an actual error, not guessing:
 - **The reply is untrusted too.** The diff could contain text that tries to steer the
   model. The script only ever posts the reply as a comment: it never executes it or uses
   it to choose actions.
+- **AI comments block the merge until resolved.** The `main` ruleset requires conversation
+  resolution (#6), and each inline finding opens a conversation. After the canary was
+  reverted, the PR stayed `BLOCKED` until its three (now outdated) threads were resolved.
+  Intended: you must read every finding. A false positive gets a short reply and is resolved.
 - **A red check is honest, not a blocker.** When no model answers, the job fails and says
   why. It is not a required check, so merges are unaffected.
 - **Test the failure you did not think of.** The first version only handled HTTP error
