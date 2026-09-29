@@ -19,6 +19,7 @@ resource "aws_instance" "node" {
   instance_type          = var.instance_type
   subnet_id              = data.terraform_remote_state.platform.outputs.public_subnet_id
   vpc_security_group_ids = [data.terraform_remote_state.platform.outputs.node_security_group_id]
+  iam_instance_profile   = data.terraform_remote_state.platform.outputs.node_instance_profile_name
 
   # t4g defaults to "unlimited" (this account's default too): sustained CPU above the
   # baseline is billed as surplus credits. "standard" throttles instead of charging.
