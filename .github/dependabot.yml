@@ -59,7 +59,8 @@ updates:
   - package-ecosystem: "terraform"
     directories:
       - "/terraform/bootstrap"
-      - "/terraform/main"
+      - "/terraform/platform"
+      - "/terraform/instance"
     schedule:
       interval: "weekly"
       day: "monday"
