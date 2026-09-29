@@ -26,35 +26,53 @@ GitHub Actions ──Tailscale──▶ Kubernetes API (push deploys)
 
 ## Cost model
 
-Target: **$0/month**. Prices are approximate us-east-1 on-demand list prices;
-check your region.
+Target: **near $0**, about $1.35–2.10/month. The AWS account is on the **paid plan with no
+credits** (the Free plan was not available for it), so nothing caps spending: the design
+keeps billable resources small and running only when used. Prices are approximate
+eu-central-1 on-demand list prices, before VAT; check the pricing pages.
 
-| Resource | Free allowance | Cost if not covered |
+| Resource | Free allowance | Cost |
 |---|---|---|
-| EC2 `t4g.small` | 750 h/month free trial until **2026-12-31** | ~$12/month |
-| EBS gp3, ≤30 GB | Free tier or account credits | ~$0.08/GB-month (~$2.40 for 30 GB) |
-| Public IPv4 address | Free tier or account credits only | ~$3.60/month per address, attached or idle |
-| Data transfer out | 100 GB/month | ~$0.09/GB |
-| S3 (Terraform state) | Negligible | Cents |
+| EC2 `t4g.small` | 750 h/month free trial until **2026-12-31** (every customer) | $0 until then; ~$0.019/h after (~$14/month 24/7) |
+| EBS gp3, 12 GB | none | ~$1.14/month, **billed even while the instance is stopped** |
+| Public IPv4 address | none | ~$0.005/h (~$3.60/month) while attached; $0 while stopped |
+| Data transfer out | 100 GB/month | ~$0.09/GB above that |
+| S3 (Terraform state) | — | Cents |
 | SSM Parameter Store (standard, AWS-managed key) | Free | Free |
-| AWS Budgets (one budget) | Free | Free |
+| EventBridge Scheduler (nightly auto-stop) | Free monthly invocations | Free |
+| AWS Budgets (one budget, no actions) | Free | Free |
 | GitHub Actions, GHCR | Free for public repos and public packages | — |
-| Tailscale, Grafana Cloud | Free personal/free tiers | — |
+| Tailscale, Grafana Cloud, Gemini API | Free personal / free tiers | — |
+
+**Running model: stop when idle.** `make stop` / `make start` around each session, a
+nightly auto-stop at 23:00 Europe/Bucharest as a safety net, and a weekly
+destroy-and-rebuild drill that proves everything comes back from git.
+
+| Usage (~40 h/month running) | Until 2026-12-31 | After |
+|---|---|---|
+| **Stop when idle** (chosen) | ~$1.35/month | ~$2.10/month |
+| Destroy when idle | ~$0.26/month | ~$1.05/month |
+| Running 24/7 (for comparison) | ~$4.80/month | ~$19/month |
 
 Notes:
 
-- **Public IPv4 is the one likely charge.** Stopping the instance releases its
-  auto-assigned address, so idle time costs nothing. An Elastic IP keeps billing
-  while idle.
+- **Nothing caps spend on a paid account.** The realistic risk is leaked credentials
+  (someone mining crypto on your bill), not this project's resources. Mitigations: no
+  long-lived access keys anywhere (`aws login` locally, OIDC in CI), MFA on root and
+  the admin user, and the budget alert.
+- **Public IPv4 costs only while the instance runs.** Stopping releases the
+  auto-assigned address (a new IP, and so a new sslip.io hostname, on every start). An
+  Elastic IP would keep the address stable but bills ~$3.60/month even while stopped.
 - **Egress** comes from responses to users, Alloy shipping metrics and logs to
   Grafana Cloud, and Tailscale traffic. Pulling images from GHCR is inbound and
   free. Expected volume is far below 100 GB/month.
-- **Guardrail:** an AWS Budgets alert at $1 emails on any spend.
-- **2026-12-31:** the `t4g.small` trial ends. Destroy the stack or accept ~$12/month.
+- **Guardrail:** a $5/month AWS Budgets alert, on actual spend ≥ 80% and forecasted
+  spend ≥ 100%. Any alert means something unplanned is running.
+- **2026-12-31:** the `t4g.small` trial ends; decide stop-when-idle vs 24/7 (#53).
 
 ## Never create
 
-These are easy to add by accident and break the $0 target.
+These are easy to add by accident and break the near-$0 target.
 
 | Resource | Approx. cost | Use instead |
 |---|---|---|
