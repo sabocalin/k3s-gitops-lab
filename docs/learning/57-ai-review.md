@@ -71,9 +71,10 @@ PR opened / pushed ─▶ workflow (pull_request) ─▶ unit tests ─▶ ai_re
   Diff limited to 100,000 characters (~25K tokens) with a note when truncated; at most
   10 findings; each comment capped at 1,500 characters. `--dry-run` and
   `--fake-response` allow a full local run without calling the LLM or posting.
-- **`.github/scripts/test_ai_review.py`**: 11 unit tests: diff line mapping (added vs
+- **`.github/scripts/test_ai_review.py`**: 13 unit tests: diff line mapping (added vs
   context vs deleted files), JSON extraction from fenced replies, the inline/summary
-  split, `RetryInfo` parsing, quota naming, and model fallback.
+  split, `RetryInfo` parsing, quota naming, model fallback, and network failures
+  (timeouts, resets) being retried without swallowing HTTP errors.
 - **Secret** `GEMINI_API_KEY`, created from a personal Google account.
 
 ## Verification
@@ -98,6 +99,7 @@ Each step below came from reading an actual error, not guessing:
 | 4 | Replaced with a single-request reviewer | Fit the design to the quota instead of fighting it. |
 | 5 | 429 again although calls were 30–60 s apart; logging the quota name showed `GenerateRequestsPerDayPerProjectPerModel-FreeTier=20` | Read which quota you hit: per-minute and per-day need opposite reactions (wait vs give up until tomorrow). |
 | 6 | Added a per-model fallback list | Quotas are per model, so a pinned list multiplies daily capacity. |
+| 7 | After the quota reset, the run crashed with a Python traceback: `TimeoutError: The read operation timed out` | An overloaded server can accept the connection and never answer. That is not an HTTP error, so the retry code never saw it. Handle "no response" as its own case. |
 
 ## Gotchas
 - **Diagnostics spend quota.** The probing on day one used up `gemini-3.6-flash`'s 20
@@ -112,6 +114,9 @@ Each step below came from reading an actual error, not guessing:
   it to choose actions.
 - **A red check is honest, not a blocker.** When no model answers, the job fails and says
   why. It is not a required check, so merges are unaffected.
+- **Test the failure you did not think of.** The first version only handled HTTP error
+  responses; a read timeout is a different exception class and crashed the script. Now
+  covered by a test, and a mutation check proves the test fails without the fix.
 - **Model names churn.** When all listed models are retired or never answer, check which
   models the key can use (a real chat completion, not only `/models`) and update `MODELS`.
 

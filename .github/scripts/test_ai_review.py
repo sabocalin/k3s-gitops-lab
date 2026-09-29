@@ -110,6 +110,40 @@ class Fallback(unittest.TestCase):
             model, reply = ai_review.call_llm("u", "k", ["m1", "m2", "m3"], "diff")
         self.assertEqual((model, reply), ("m3", "{}"))
 
+    def test_network_errors_retry_then_fall_back(self):
+        calls = []
+
+        def fake(url, payload, headers, method="POST"):
+            calls.append(payload["model"])
+            if payload["model"] == "m1":
+                raise TimeoutError("The read operation timed out")
+            if len(calls) == 4:  # m2, first try
+                raise ConnectionResetError("reset by peer")
+            return {"choices": [{"message": {"content": "{}"}}]}
+
+        with mock.patch.object(ai_review, "http_json", side_effect=fake), \
+                mock.patch.object(ai_review.time, "sleep"):
+            model, _ = ai_review.call_llm("u", "k", ["m1", "m2"], "diff")
+        self.assertEqual(model, "m2")
+        self.assertEqual(calls, ["m1", "m1", "m1", "m2", "m2"])
+
+    def test_http_error_is_not_swallowed_by_network_branch(self):
+        per_day = [{"error": {"details": [{"@type": "type.googleapis.com/google.rpc.QuotaFailure",
+                    "violations": [{"quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+                                    "quotaValue": "20"}]}]}}]
+        calls = []
+
+        def fake(url, payload, headers, method="POST"):
+            calls.append(payload["model"])
+            if payload["model"] == "m1":
+                raise http_error(429, per_day)
+            return {"choices": [{"message": {"content": "{}"}}]}
+
+        with mock.patch.object(ai_review, "http_json", side_effect=fake), \
+                mock.patch.object(ai_review.time, "sleep"):
+            ai_review.call_llm("u", "k", ["m1", "m2"], "diff")
+        self.assertEqual(calls, ["m1", "m2"])  # daily quota: skip at once, no retries
+
     def test_all_models_fail_exits_with_error(self):
         with mock.patch.object(ai_review, "http_json", side_effect=http_error(404, {})):
             with self.assertRaises(SystemExit):

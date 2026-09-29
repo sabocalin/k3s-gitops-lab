@@ -13,6 +13,7 @@ Standard library only. Configuration comes from environment variables set by
         --fake-response findings.json
 """
 import argparse
+import http.client
 import json
 import os
 import random
@@ -29,6 +30,7 @@ MAX_COMMENT_CHARS = 1500
 RETRY_DEADLINE_S = 480  # total time allowed for retrying 429/5xx across all models
 MAX_ATTEMPTS_PER_MODEL = 3
 RETRYABLE = {429, 500, 502, 503, 504}
+REQUEST_TIMEOUT_S = 90  # an overloaded model can accept the connection and never answer
 EXCLUDES = [":(exclude)*.lock", ":(exclude)*-lock.json", ":(exclude)*.svg",
             ":(exclude)*.png", ":(exclude)*.jpg"]
 
@@ -128,7 +130,7 @@ def fmt(f):
 def http_json(url, payload, headers, method="POST"):
     req = urllib.request.Request(url, data=json.dumps(payload).encode(), method=method,
                                  headers={"Content-Type": "application/json", **headers})
-    with urllib.request.urlopen(req, timeout=120) as resp:
+    with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT_S) as resp:
         return json.loads(resp.read() or b"{}")
 
 
@@ -184,6 +186,15 @@ def call_model(url, key, model, diff, deadline):
             if attempt == MAX_ATTEMPTS_PER_MODEL or time.monotonic() + wait > deadline:
                 raise NextModel(f"HTTP {e.code} after {attempt} attempt(s): {detail}")
             print(f"{model} attempt {attempt}: HTTP {e.code} ({detail}), retrying in {wait:.0f}s")
+            time.sleep(wait)
+        # Must come after HTTPError, which is a subclass of URLError. These mean no
+        # HTTP answer at all: read timeout, reset connection, DNS/TLS failure.
+        except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException) as e:
+            detail = f"{type(e).__name__}: {e}"
+            wait = min(15 * 2 ** attempt, 60) + random.uniform(0, 3)
+            if attempt == MAX_ATTEMPTS_PER_MODEL or time.monotonic() + wait > deadline:
+                raise NextModel(f"no response after {attempt} attempt(s): {detail}")
+            print(f"{model} attempt {attempt}: no response ({detail}), retrying in {wait:.0f}s")
             time.sleep(wait)
     raise NextModel("no attempts left")
 
