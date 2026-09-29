@@ -45,6 +45,17 @@ resource "aws_instance" "node" {
 
   # No key pair: port 22 is closed anyway; admin access comes over Tailscale (#13).
 
+  # First-boot script: installs Tailscale, joins the tailnet (secret read from SSM at boot,
+  # only the parameter name is in here). cloud-init runs user_data once, on first boot, so
+  # a change must replace the instance to take effect.
+  user_data = templatefile("${path.module}/user_data.sh.tftpl", {
+    region           = var.region
+    secret_parameter = data.terraform_remote_state.platform.outputs.tailscale_secret_parameter
+    tag              = "tag:k3s"
+    hostname         = "k3s-node"
+  })
+  user_data_replace_on_change = true
+
   tags        = { Name = "k3s-gitops-lab-node" }
   volume_tags = { Name = "k3s-gitops-lab-node-root" }
 

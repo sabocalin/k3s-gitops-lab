@@ -1,0 +1,63 @@
+#!/bin/bash
+# First-boot script (cloud-init runs it once, as root). Installs Tailscale and joins the
+# tailnet with the OAuth client secret read from SSM. The secret never appears in this
+# file, on a command line, on disk, or in logs: only the parameter NAME is templated in.
+#
+# Output goes to /var/log/cloud-init-output.log and the EC2 console; lines starting with
+# "K3SLAB:" are markers read by verification. Never enable `set -x` here: it would print
+# the secret.
+set -euo pipefail
+
+log() { echo "K3SLAB: $*"; }
+
+log "boot script start"
+
+# --- Tailscale from its signed apt repository --------------------------------------------
+install -d -m 0755 /usr/share/keyrings
+curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg \
+  -o /usr/share/keyrings/tailscale-archive-keyring.gpg
+curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.tailscale-keyring.list \
+  -o /etc/apt/sources.list.d/tailscale.list
+apt-get update -qq
+DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tailscale
+systemctl enable --now tailscaled
+log "tailscale $(tailscale version | head -1) installed"
+
+# --- AWS CLI (the Ubuntu image ships without it; Amazon publishes it as a snap) -----------
+snap wait system seed.loaded
+snap install aws-cli --classic
+log "aws cli $(/snap/bin/aws --version 2>&1 | cut -d' ' -f1) installed"
+
+# --- Secret: SSM -> memory-backed file -> tailscale -> shredded --------------------------
+secret_file=$(mktemp -p /run ts-authkey.XXXXXX)   # /run is tmpfs: never written to disk
+chmod 0600 "$secret_file"
+trap 'shred -u "$secret_file" 2>/dev/null || rm -f "$secret_file"' EXIT
+
+# `--output text` ends with a newline; strip it BEFORE appending the attributes, or the
+# file becomes "secret\n?attrs" and Tailscale sends "secret\n" (HTTP 401).
+/snap/bin/aws ssm get-parameter \
+  --region "${region}" \
+  --name "${secret_parameter}" \
+  --with-decryption \
+  --query Parameter.Value --output text | tr -d '\n' > "$secret_file"
+
+# Fail loudly on a malformed secret instead of getting an opaque 401 later.
+if grep -q '[[:space:]]' "$secret_file" || ! grep -q '^tskey-client-' "$secret_file"; then
+  log "ERROR: stored secret is not a single-line tskey-client-... value"
+  exit 1
+fi
+secret_len=$(wc -c < "$secret_file")
+
+# An OAuth client secret works as an auth key; the query string sets key attributes.
+printf '?ephemeral=false&preauthorized=true' >> "$secret_file"
+log "secret fetched ($secret_len bytes + 35 bytes of attributes, value not shown)"
+
+tailscale up \
+  --auth-key="file:$secret_file" \
+  --advertise-tags="${tag}" \
+  --hostname="${hostname}" \
+  --ssh
+
+log "tailscale ip $(tailscale ip -4)"
+log "tailscale status: $(tailscale status --json | python3 -c 'import json,sys; s=json.load(sys.stdin)["Self"]; print("online=%s tags=%s dns=%s" % (s.get("Online"), s.get("Tags"), s.get("DNSName")))')"
+log "boot script done"

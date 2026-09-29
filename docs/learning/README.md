@@ -13,4 +13,5 @@ verified, and what surprised us. New notes start from [`_template.md`](_template
 | #9 | [Platform stack: network foundation, backend, default tags](9-platform-stack.md) | 1 |
 | #10, #11 | [EC2 instance and its security group](10-instance-and-security-group.md) | 1 |
 | #12 | [Node IAM role and the Tailscale secret in SSM](12-node-iam-and-secret.md) | 1 |
+| #13 | [Tailscale on first boot](13-tailscale-on-boot.md) | 1 |
 | #57 | [AI code review on pull requests](57-ai-review.md) | 0 |
