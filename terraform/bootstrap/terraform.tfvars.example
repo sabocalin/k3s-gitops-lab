@@ -1,0 +1,4 @@
+# Copy to terraform.tfvars (git-ignored) and fill in. The repo is public; do not commit
+# personal data.
+alert_email = "you@example.com"
+alert_phone = "+40 700 000 000"
