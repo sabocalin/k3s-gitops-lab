@@ -19,7 +19,14 @@ GitHub Actions ──OIDC──▶ AWS (no stored keys)
 GitHub Actions ──Tailscale──▶ Kubernetes API (push deploys)
 ```
 
-- Infrastructure: Terraform (S3 backend) + Ansible installs K3s.
+- Infrastructure: Terraform (S3 backend) + Ansible installs K3s. Three stacks, each with
+  its own state in the bootstrap bucket:
+
+  | Stack | Contents | Lifetime |
+  |---|---|---|
+  | `terraform/bootstrap` | state bucket, budget alert, alternate contacts | permanent |
+  | `terraform/platform` | VPC, public subnet, internet gateway, security groups, IAM, SSM | permanent (all free) |
+  | `terraform/instance` | the EC2 instance | stopped when idle, destroyed and rebuilt weekly |
 - Images: built natively for arm64 in GitHub Actions, pushed to GHCR, signed.
 - Deploys: two paths to separate namespaces, push (`kubectl apply` from Actions)
   and pull (ArgoCD watching this repo).

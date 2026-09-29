@@ -49,7 +49,7 @@ One file: `.github/dependabot.yml`.
 | `github-actions` | `/` (scans `.github/workflows` and composite actions) | All actions in one PR |
 | `pip` | `/app` | Minor + patch in one PR; each major bump separately |
 | `docker` | `/app` | One PR per base image |
-| `terraform` | `/terraform/bootstrap`, `/terraform/main` | All in one PR |
+| `terraform` | `/terraform/bootstrap`, `/terraform/platform`, `/terraform/instance` | All in one PR |
 
 Non-default settings:
 - **Schedule** weekly, Monday 06:00 Europe/Bucharest: one predictable batch a week
@@ -81,7 +81,7 @@ Non-default settings:
 - **YAML anchors are avoided.** GitHub does not document anchor support in
   `dependabot.yml`, so the schedule block is repeated in full.
 - **Folder layout is now a contract.** If code lands somewhere other than `app/` or
-  `terraform/{bootstrap,main}`, update the directories here.
+  `terraform/{bootstrap,platform,instance}`, update the directories here.
 - **If Phase 2 uses `uv`**, switch the pip entry to `package-ecosystem: "uv"`.
 
 ## Further reading
