@@ -85,8 +85,14 @@ PR opened / pushed ─▶ workflow (pull_request) ─▶ unit tests ─▶ ai_re
 - zizmor: no findings on the workflow.
 - In CI, the retry and fallback paths were exercised for real (see below): the log
   names, for each model, why it was skipped.
-- **Not yet verified: a review actually posted to a PR.** Every live run so far hit the
-  free tier's limits. Pending the daily quota reset (midnight Pacific, 10:00 Bucharest).
+- **First real review** (after the daily quota reset): `gemini-3.6-flash` answered 503
+  three times, the fallback moved to `gemini-3.8-flash`, which answered; 0 findings on a
+  small fix, so no PR comment (by design).
+- **Negative control, the reviewer itself:** a canary commit added `canary/bad.tf` with
+  three known problems. The review flagged all three as 🔴 high, each as a line comment
+  on the right line: the NAT Gateway (~$32/month, breaks the $0 budget), SSH open to
+  `0.0.0.0/0`, and an IAM policy with `Action: *` / `Resource: *`. The canary was
+  reverted in the next commit and disappears in the squash merge.
 
 ## How we got here (the diagnosis)
 Each step below came from reading an actual error, not guessing:
