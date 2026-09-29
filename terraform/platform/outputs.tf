@@ -14,3 +14,7 @@ output "availability_zone" {
 output "region" {
   value = var.region
 }
+
+output "node_security_group_id" {
+  value = aws_security_group.node.id
+}
