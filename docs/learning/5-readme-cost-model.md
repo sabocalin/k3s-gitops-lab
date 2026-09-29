@@ -28,7 +28,7 @@ separate programs with different rules:
   check Billing → Free Tier.
 - **Always free** items (e.g. SSM Parameter Store standard parameters, one Budgets budget).
 
-Three billing facts drive most of the design:
+Three billing facts drive most of the design (see also the update below):
 1. **Every public IPv4 address costs money** (~$3.60/month), attached or not, since
    AWS started charging for them in February 2024. That is why the design has exactly
    one public IP and no Elastic IP.
@@ -53,6 +53,23 @@ Three billing facts drive most of the design:
 Documentation, so there is no command to run. Prices were taken from AWS public
 pricing and are approximate us-east-1 on-demand figures; confirm them for your region
 before relying on them.
+
+## Update (2026-09-29): paid plan, no credits
+The AWS account could not use the Free plan (the owner's identity is linked to other
+accounts), so it is on the paid plan with **no credits**. Opening another account under
+a different name to get around that would break AWS's terms and was rejected.
+
+What changed:
+- **Target** moved from "$0" to "near $0" (~$1–2/month).
+- **Disk** 30 GB → 12 GB: EBS bills every hour it exists, even while the instance is
+  stopped, and there is no free allowance on this account.
+- **Running model: stop when idle**, with a nightly auto-stop (EventBridge Scheduler,
+  #62) as the safety net and a weekly rebuild drill (#64). Destroy-when-idle is cheaper
+  (~$0.26/month) but makes every session start with a 5–10 minute rebuild; the ~$1/month
+  difference buys a 1-minute resume, and the weekly drill keeps the automation honest.
+- **Budget** $1 → $5/month with actual (80%) and forecast (100%) alerts (#2).
+- **Main risk re-framed:** nothing caps spending, so leaked credentials matter more
+  than resource choices. No long-lived keys anywhere, MFA everywhere.
 
 ## Gotchas
 - **Budgets alert with a delay.** AWS Budgets data refreshes a few times a day, so an

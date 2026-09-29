@@ -19,7 +19,9 @@ This overrides terse/short-answer preferences inside this repo only.
 
 - One branch per issue: `gh issue develop <n> --checkout`. PR body contains `Closes #<n>`.
 - Signed commits, squash merge only; `main` is protected by a ruleset (no direct push).
-- $0 budget: check the README "Never create" list before adding any AWS resource.
+- Near-$0 budget on a paid AWS account with no credits: check the README cost model and
+  "Never create" list before adding any AWS resource. Always `AWS_PROFILE=personal`; the
+  `default` profile on this laptop is an employer production account.
 - Pin everything: actions by commit SHA, images by digest, tools by exact version.
 - Personal GitHub account only. Use `GH_TOKEN=$(gh auth token --user sabocalin) gh ...`
   so the global gh account is never switched.
