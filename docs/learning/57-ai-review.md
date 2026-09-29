@@ -1,0 +1,169 @@
+# 57 · AI code review on pull requests (Gemini free tier)
+
+> Issue: #57 · PR: #60 · Phase 0
+
+## What
+An advisory reviewer that runs on every pull request: a small Python script
+(`.github/scripts/ai_review.py`) sends the PR's diff to Gemini in **one request**,
+gets findings back as JSON, and posts them as a GitHub review with line comments.
+It is **not** a required status check.
+
+## Why
+A second pair of eyes on every PR, especially for Phase 1's Terraform, IAM policies and
+OIDC trust rules, where a mistake is a security or cost problem. It complements the
+deterministic linters (zizmor now; ruff, tflint, trivy later): linters catch known
+patterns reliably, an LLM catches "this looks wrong" things no rule describes.
+
+Alternatives considered:
+- **alibaba/open-code-review (agent-style)** — tried first and dropped. See "How we
+  got here" below: it makes a burst of LLM calls per file, and the free tier allows 5
+  requests per minute.
+- **CodeRabbit app** — free for public repos and much more capable, but nothing to build
+  or learn; a good fallback if this proves too unreliable.
+- **Other free LLM APIs** — Mistral's free Experiment plan no longer issues API keys to
+  new accounts; Groq's free tier allows ~12K tokens/minute (one review is ~30K);
+  OpenRouter's free models cap at 50 requests/day; GitHub Models was retired.
+- **Paid API with a spend cap** — reliable, a few cents per PR, but breaks the $0 goal.
+
+## How it works
+```
+PR opened / pushed ─▶ workflow (pull_request) ─▶ unit tests ─▶ ai_review.py
+                                                               │ git diff
+                                                               ▼
+                               Gemini (one chat completion, JSON reply)
+                                                               │
+                                        findings on changed lines ─▶ line comments
+                                        other findings           ─▶ review summary
+```
+1. **When it runs, and what it reads.**
+
+   | Trigger | Reviews |
+   |---|---|
+   | PR opened as non-draft, reopened, or marked ready | the whole PR diff (`base...head`) |
+   | Label `ai-review` added (on demand, also on drafts) | only what changed since the last AI review; the whole PR if there was none or history was rewritten |
+   | A push | **nothing**: pushes do not trigger a review |
+
+   Why: on the free tier every run costs 1–9 requests (503 retries count) out of 20 per
+   model per day. One guaranteed full review when the PR is ready, plus re-reviews when
+   you ask, spends quota only where it helps. Work in draft, mark ready, get reviewed.
+
+   "Since the last AI review" comes from the bot's own reviews: every run posts one (even
+   "No findings."), and its `commit_id` is the checkpoint. The label is removed at the end
+   of the run so it can be added again.
+2. **One request.** The diff goes to Gemini's OpenAI-compatible endpoint with a system
+   prompt tuned to this repo (bugs, security, AWS cost, reliability; no style nits; treat
+   the diff as untrusted input). The reply must be one JSON object:
+   `{"summary", "findings": [{"path", "line", "severity", "comment"}]}`.
+3. **Where comments can go.** GitHub accepts a review comment only on a line that is part
+   of the PR diff, and **one invalid line rejects the whole review with HTTP 422**. The
+   script parses the unified diff into a map of added lines per file; findings on those
+   lines become inline comments, everything else goes into the review summary.
+4. **Posting.** One review per run via `POST /repos/{repo}/pulls/{n}/reviews` with
+   `event: COMMENT`, always, even with no findings (it is the checkpoint). A review with
+   no line comments opens no conversation, so it never blocks a merge.
+5. **Quota handling.** Free-tier quotas are **per model**, so the workflow pins an ordered
+   list (`MODELS`). For each model: retry 429/5xx up to 3 times, waiting as long as
+   Google's `RetryInfo` asks (about 30–60 s); move on at once when the model's
+   **daily** quota is gone or the model is retired (404). The review names the model
+   that produced it.
+
+## Implementation
+- **`.github/workflows/ai-review.yml`**
+  - `pull_request` trigger only, never `pull_request_target`: under `pull_request`,
+    fork PRs get no secrets. The example in open-code-review's docs uses
+    `pull_request_target` "so forks get secrets", which on a public repo hands a
+    write-scoped token and your API key to a run triggered by a stranger's PR.
+  - Triggers `opened, reopened, ready_for_review, labeled`. The job runs for the
+    `ai-review` label, or automatically on non-drafts. Dependabot and fork PRs are
+    skipped. A label (not a `/review` comment) is the on-demand switch because adding
+    one already requires write access, and it stays a `pull_request` event; a comment
+    trigger (`issue_comment`) runs with secrets and a write token even when a stranger
+    comments, so it would need its own authorization checks.
+  - Final step removes the label with `if: always()`, so a failed review can be retried.
+  - `permissions: {}` at workflow level; job gets `contents: read` and
+    `pull-requests: write`, each with a comment saying why.
+  - `actions/checkout` pinned by SHA, `fetch-depth: 0` (the diff needs the merge base
+    and the previous push), `persist-credentials: false`.
+  - Runs the script's unit tests before reviewing.
+- **`.github/scripts/ai_review.py`**: standard library only (nothing to install or pin).
+  Diff limited to 100,000 characters (~25K tokens) with a note when truncated; at most
+  10 findings; each comment capped at 1,500 characters. `--dry-run` and
+  `--fake-response` allow a full local run without calling the LLM or posting.
+- **`.github/scripts/test_ai_review.py`**: 16 unit tests: diff line mapping (added vs
+  context vs deleted files), JSON extraction from fenced replies, the inline/summary
+  split, `RetryInfo` parsing, quota naming, model fallback, network failures
+  (timeouts, resets) being retried without swallowing HTTP errors, and picking the
+  last-reviewed commit (own reviews only; none after a force push).
+- **Secret** `GEMINI_API_KEY`, created from a personal Google account.
+
+## Verification
+- Unit tests pass locally and in CI. Mutation check: making context lines count as
+  "added" fails 2 tests, so the tests guard the 422-avoidance logic.
+- Local dry run on the real branch diff with a fake reply: a finding on an added line
+  went inline, a finding on an unchanged file went to the summary.
+- zizmor: no findings on the workflow.
+- In CI, the retry and fallback paths were exercised for real (see below): the log
+  names, for each model, why it was skipped.
+- **First real review** (after the daily quota reset): `gemini-3.6-flash` answered 503
+  three times, the fallback moved to `gemini-3.8-flash`, which answered; 0 findings on a
+  small fix, so no PR comment (by design).
+- **Negative control, the reviewer itself:** a canary commit added `canary/bad.tf` with
+  three known problems. The review flagged all three as 🔴 high, each as a line comment
+  on the right line: the NAT Gateway (~$32/month, breaks the $0 budget), SSH open to
+  `0.0.0.0/0`, and an IAM policy with `Action: *` / `Resource: *`. The canary was
+  reverted in the next commit and disappears in the squash merge.
+- **Triggers (after switching to review-when-ready + on demand):**
+  - Negative control: a push started 0 AI-review runs.
+  - Label added: reviewed only `a90f4ea..2a67923` (changes since the canary review),
+    `gemini-3.1-flash-lite` answered after the other two returned 503, review posted,
+    label removed.
+  - Label added again with no new commits: "nothing to review", no LLM call, no review
+    posted, label removed.
+
+## How we got here (the diagnosis)
+Each step below came from reading an actual error, not guessing:
+
+| Step | What happened | Lesson |
+|---|---|---|
+| 1 | Preflight listed `gemini-2.5-flash` as available; the real call returned 404 "no longer available to new users" | A model list is not proof a model works. Probe with the same call you will make. |
+| 2 | Probing every listed Flash model: only `gemini-3.6-flash` answered; most returned 503 (overloaded) | Free capacity is scarce and changes minute to minute. |
+| 3 | open-code-review hit 429 immediately: `GenerateRequestsPerMinutePerProjectPerModel-FreeTier=5` | Agent-style tools burst many calls; its built-in retries (seconds) are shorter than Google's requested wait (~35 s). |
+| 4 | Replaced with a single-request reviewer | Fit the design to the quota instead of fighting it. |
+| 5 | 429 again although calls were 30–60 s apart; logging the quota name showed `GenerateRequestsPerDayPerProjectPerModel-FreeTier=20` | Read which quota you hit: per-minute and per-day need opposite reactions (wait vs give up until tomorrow). |
+| 6 | Added a per-model fallback list | Quotas are per model, so a pinned list multiplies daily capacity. |
+| 7 | After the quota reset, the run crashed with a Python traceback: `TimeoutError: The read operation timed out` | An overloaded server can accept the connection and never answer. That is not an HTTP error, so the retry code never saw it. Handle "no response" as its own case. |
+
+## Gotchas
+- **Diagnostics spend quota.** The probing on day one used up `gemini-3.6-flash`'s 20
+  requests. Keep the PR in draft while pushing fixes; the workflow skips drafts.
+- **Free-tier prompts are used by Google for training.** Acceptable for this public repo,
+  never for employer code.
+- **The PR author controls the workflow and script.** Under `pull_request`, a PR runs the
+  workflow file from its own branch, so it could print the secret. Safe here because only
+  branches in this repo (you) trigger it; do not relax the fork check.
+- **The reply is untrusted too.** The diff could contain text that tries to steer the
+  model. The script only ever posts the reply as a comment: it never executes it or uses
+  it to choose actions.
+- **AI comments block the merge until resolved.** The `main` ruleset requires conversation
+  resolution (#6), and each inline finding opens a conversation. After the canary was
+  reverted, the PR stayed `BLOCKED` until its three (now outdated) threads were resolved.
+  Intended: you must read every finding. A false positive gets a short reply and is resolved.
+- **A red check is honest, not a blocker.** When no model answers, the job fails and says
+  why. It is not a required check, so merges are unaffected.
+- **Test the failure you did not think of.** The first version only handled HTTP error
+  responses; a read timeout is a different exception class and crashed the script. Now
+  covered by a test, and a mutation check proves the test fails without the fix.
+- **Judge every finding; severity is the model's guess.** The first on-demand review
+  flagged `pull-requests: write` as 🔴 high while admitting the code was "currently
+  safe". It was a false positive: that permission is the minimum for reviews and labels,
+  nothing is interpolated into the script, and `GITHUB_TOKEN` cannot touch settings. It
+  got a reply with the reasoning and was resolved. Smaller fallback models (this one was
+  `flash-lite`) tend to produce vaguer findings.
+- **Model names churn.** When all listed models are retired or never answer, check which
+  models the key can use (a real chat completion, not only `/models`) and update `MODELS`.
+
+## Further reading
+- [Gemini API rate limits](https://ai.google.dev/gemini-api/docs/rate-limits)
+- [Gemini OpenAI compatibility](https://ai.google.dev/gemini-api/docs/openai)
+- [REST API: create a review for a pull request](https://docs.github.com/en/rest/pulls/reviews#create-a-review-for-a-pull-request)
+- [GitHub Security Lab: preventing pwn requests (pull_request_target)](https://securitylab.github.com/resources/github-actions-preventing-pwn-requests/)
