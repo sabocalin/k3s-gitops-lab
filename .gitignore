@@ -227,3 +227,5 @@ crash.log
 crash.*.log
 *.tfplan
 # .terraform.lock.hcl is committed on purpose: it pins provider checksums.
+# The Python template above ignores any `instance/` folder (Flask); not this one.
+!terraform/instance/
