@@ -35,10 +35,21 @@ PR opened / pushed ─▶ workflow (pull_request) ─▶ unit tests ─▶ ai_re
                                         findings on changed lines ─▶ line comments
                                         other findings           ─▶ review summary
 ```
-1. **What gets reviewed.** First review (opened / reopened / ready for review): the whole
-   PR diff (`base...head`). Later pushes (`synchronize`): only the new commits
-   (`before..head`), so each request is small and old code is not re-commented. If
-   history was rewritten (force push), it falls back to the whole PR diff.
+1. **When it runs, and what it reads.**
+
+   | Trigger | Reviews |
+   |---|---|
+   | PR opened as non-draft, reopened, or marked ready | the whole PR diff (`base...head`) |
+   | Label `ai-review` added (on demand, also on drafts) | only what changed since the last AI review; the whole PR if there was none or history was rewritten |
+   | A push | **nothing**: pushes do not trigger a review |
+
+   Why: on the free tier every run costs 1–9 requests (503 retries count) out of 20 per
+   model per day. One guaranteed full review when the PR is ready, plus re-reviews when
+   you ask, spends quota only where it helps. Work in draft, mark ready, get reviewed.
+
+   "Since the last AI review" comes from the bot's own reviews: every run posts one (even
+   "No findings."), and its `commit_id` is the checkpoint. The label is removed at the end
+   of the run so it can be added again.
 2. **One request.** The diff goes to Gemini's OpenAI-compatible endpoint with a system
    prompt tuned to this repo (bugs, security, AWS cost, reliability; no style nits; treat
    the diff as untrusted input). The reply must be one JSON object:
@@ -48,7 +59,8 @@ PR opened / pushed ─▶ workflow (pull_request) ─▶ unit tests ─▶ ai_re
    script parses the unified diff into a map of added lines per file; findings on those
    lines become inline comments, everything else goes into the review summary.
 4. **Posting.** One review per run via `POST /repos/{repo}/pulls/{n}/reviews` with
-   `event: COMMENT`. No findings → no PR comment; the result is in the job summary.
+   `event: COMMENT`, always, even with no findings (it is the checkpoint). A review with
+   no line comments opens no conversation, so it never blocks a merge.
 5. **Quota handling.** Free-tier quotas are **per model**, so the workflow pins an ordered
    list (`MODELS`). For each model: retry 429/5xx up to 3 times, waiting as long as
    Google's `RetryInfo` asks (about 30–60 s); move on at once when the model's
@@ -61,7 +73,13 @@ PR opened / pushed ─▶ workflow (pull_request) ─▶ unit tests ─▶ ai_re
     fork PRs get no secrets. The example in open-code-review's docs uses
     `pull_request_target` "so forks get secrets", which on a public repo hands a
     write-scoped token and your API key to a run triggered by a stranger's PR.
-  - Skips drafts (saves quota), Dependabot (it gets no repo secrets) and fork PRs.
+  - Triggers `opened, reopened, ready_for_review, labeled`. The job runs for the
+    `ai-review` label, or automatically on non-drafts. Dependabot and fork PRs are
+    skipped. A label (not a `/review` comment) is the on-demand switch because adding
+    one already requires write access, and it stays a `pull_request` event; a comment
+    trigger (`issue_comment`) runs with secrets and a write token even when a stranger
+    comments, so it would need its own authorization checks.
+  - Final step removes the label with `if: always()`, so a failed review can be retried.
   - `permissions: {}` at workflow level; job gets `contents: read` and
     `pull-requests: write`, each with a comment saying why.
   - `actions/checkout` pinned by SHA, `fetch-depth: 0` (the diff needs the merge base
@@ -71,10 +89,11 @@ PR opened / pushed ─▶ workflow (pull_request) ─▶ unit tests ─▶ ai_re
   Diff limited to 100,000 characters (~25K tokens) with a note when truncated; at most
   10 findings; each comment capped at 1,500 characters. `--dry-run` and
   `--fake-response` allow a full local run without calling the LLM or posting.
-- **`.github/scripts/test_ai_review.py`**: 13 unit tests: diff line mapping (added vs
+- **`.github/scripts/test_ai_review.py`**: 16 unit tests: diff line mapping (added vs
   context vs deleted files), JSON extraction from fenced replies, the inline/summary
-  split, `RetryInfo` parsing, quota naming, model fallback, and network failures
-  (timeouts, resets) being retried without swallowing HTTP errors.
+  split, `RetryInfo` parsing, quota naming, model fallback, network failures
+  (timeouts, resets) being retried without swallowing HTTP errors, and picking the
+  last-reviewed commit (own reviews only; none after a force push).
 - **Secret** `GEMINI_API_KEY`, created from a personal Google account.
 
 ## Verification
@@ -93,6 +112,13 @@ PR opened / pushed ─▶ workflow (pull_request) ─▶ unit tests ─▶ ai_re
   on the right line: the NAT Gateway (~$32/month, breaks the $0 budget), SSH open to
   `0.0.0.0/0`, and an IAM policy with `Action: *` / `Resource: *`. The canary was
   reverted in the next commit and disappears in the squash merge.
+- **Triggers (after switching to review-when-ready + on demand):**
+  - Negative control: a push started 0 AI-review runs.
+  - Label added: reviewed only `a90f4ea..2a67923` (changes since the canary review),
+    `gemini-3.1-flash-lite` answered after the other two returned 503, review posted,
+    label removed.
+  - Label added again with no new commits: "nothing to review", no LLM call, no review
+    posted, label removed.
 
 ## How we got here (the diagnosis)
 Each step below came from reading an actual error, not guessing:
@@ -127,6 +153,12 @@ Each step below came from reading an actual error, not guessing:
 - **Test the failure you did not think of.** The first version only handled HTTP error
   responses; a read timeout is a different exception class and crashed the script. Now
   covered by a test, and a mutation check proves the test fails without the fix.
+- **Judge every finding; severity is the model's guess.** The first on-demand review
+  flagged `pull-requests: write` as 🔴 high while admitting the code was "currently
+  safe". It was a false positive: that permission is the minimum for reviews and labels,
+  nothing is interpolated into the script, and `GITHUB_TOKEN` cannot touch settings. It
+  got a reply with the reasoning and was resolved. Smaller fallback models (this one was
+  `flash-lite`) tend to produce vaguer findings.
 - **Model names churn.** When all listed models are retired or never answer, check which
   models the key can use (a real chat completion, not only `/models`) and update `MODELS`.
 
