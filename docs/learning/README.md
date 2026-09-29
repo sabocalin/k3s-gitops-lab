@@ -5,6 +5,7 @@ verified, and what surprised us. New notes start from [`_template.md`](_template
 
 | Issue | Note | Phase |
 |---|---|---|
+| #2, #8 | [Terraform bootstrap stack (state bucket, budget, contacts)](8-terraform-bootstrap.md) | 0 / 1 |
 | #3 | [Dependabot version updates](3-dependabot.md) | 0 |
 | #4 | [Pin all GitHub Actions to a commit SHA](4-pin-actions.md) | 0 |
 | #5 | [README: cost model and "never create" list](5-readme-cost-model.md) | 0 |
