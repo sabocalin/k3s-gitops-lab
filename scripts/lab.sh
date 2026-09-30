@@ -150,8 +150,6 @@ delete_lease() {
 
 # --- the node over Tailscale ----------------------------------------------------------
 
-tailnet_lacks_node() { ! tailnet_has_node; }
-
 tailnet_has_node() {
   "$TSU" status --json |
     jq -e --arg n "$NODE_FQDN." '[(.Peer // {})[] | select(.DNSName == $n)] | length > 0' \
@@ -177,21 +175,6 @@ wait_k3s() {
   wait_for 30 "K3s on $NODE over Tailscale" node_ssh sudo k3s kubectl get --raw=/readyz ||
     die "K3s is not ready after 5 min; check: ssh $NODE sudo systemctl status k3s"
   say "K3s is ready: kubectl --context $PROJECT get nodes"
-}
-
-# A rebuilt node registers as a new Tailscale device. Logging the old one out first frees
-# the name `k3s-node` (otherwise the new one becomes k3s-node-1 and the TLS names break).
-# The logout runs 2 s later from a transient systemd timer, so this SSH session (which
-# itself runs over Tailscale) ends cleanly before the tunnel goes away.
-tailnet_logout() {
-  say "logging $NODE out of the tailnet (frees the name for the next build)"
-  node_ssh sudo systemd-run --quiet --on-active=2s /usr/bin/tailscale logout ||
-    die "could not reach $NODE to log it out; nothing was destroyed"
-  if wait_for 6 "$NODE to leave the tailnet" tailnet_lacks_node; then
-    say "$NODE left the tailnet"
-  else
-    say "warning: $NODE is still listed in the tailnet; remove it at https://login.tailscale.com/admin/machines before make up"
-  fi
 }
 
 # --- terraform ------------------------------------------------------------------------
@@ -221,7 +204,6 @@ plan_and_apply() { # <plan file> <question> [plan flags...]
     rm -f "$TF_DIR/$plan"
     die "not applied"
   fi
-  [ -z "${BEFORE_APPLY:-}" ] || "$BEFORE_APPLY"
   tf apply -input=false "$plan"
   rm -f "$TF_DIR/$plan"
 }
@@ -317,8 +299,15 @@ cmd_up() {
   wait_for 60 "$NODE to join the tailnet and accept SSH" node_ssh true ||
     die "$NODE did not come up on the tailnet in 10 min; check its console output in the EC2 console"
   say "waiting for first-boot setup (cloud-init) to finish"
-  node_ssh cloud-init status --wait >/dev/null ||
-    say "warning: cloud-init reported problems; see: ssh $NODE cloud-init status --long"
+  # Exit 2 means done with recoverable warnings (on this VPC: the IPv6 metadata address is
+  # unreachable, so cloud-init falls back to IPv4); 1 means it failed.
+  rc=0
+  node_ssh cloud-init status --wait >/dev/null || rc=$?
+  case $rc in
+    0) ;;
+    2) say "cloud-init done, with recoverable warnings (ssh $NODE cloud-init status --long)" ;;
+    *) say "warning: cloud-init failed (exit $rc); see: ssh $NODE cloud-init status --long" ;;
+  esac
   say "configuring the node with Ansible"
   ansible/run.sh ansible-playbook site.yml
   # The ArgoCD bootstrap (#40) joins here.
@@ -331,22 +320,13 @@ cmd_up() {
 
 cmd_down() {
   guard_account
-  guard_tailscale
-  ids=$(find_instances)
-  BEFORE_APPLY=before_destroy
   plan_and_apply down.tfplan "Destroy the node and its disk?" -destroy
   delete_lease
-}
-
-# Runs after "yes" and before the destroy, so a cancelled destroy leaves the node intact.
-before_destroy() {
-  [ -n "$ids" ] || return 0
-  id=$(instance_id)
-  if [ "$(state_of "$id")" = running ]; then
-    tailnet_logout
-  elif tailnet_has_node; then
-    say "warning: the node is stopped, so it cannot log itself out of Tailscale;"
-    say "remove '$NODE' at https://login.tailscale.com/admin/machines before make up"
+  # The node's Tailscale device outlives the instance, and it keeps the name k3s-node
+  # even when logged out (a logout only expires its key). Only deleting it frees the name.
+  if ! "$TSU" status >/dev/null 2>&1 || tailnet_has_node; then
+    say "next: remove the old '$NODE' device at https://login.tailscale.com/admin/machines"
+    say "(make up refuses to build while it is there: the new node would join as $NODE-1)"
   fi
 }
 

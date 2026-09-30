@@ -39,10 +39,8 @@ make <target>  ─▶ Makefile: AWS_PROFILE=personal (override), AWS_REGION=eu-c
   saved plan** (Terraform refuses a saved plan if the state changed meanwhile). Then it
   waits for the node on the tailnet, waits for cloud-init, runs Ansible, and sets a lease.
   The ArgoCD bootstrap joins here with #40.
-- **`make down`** does the same with a destroy plan. After `yes` and before destroying, a
-  running node logs itself out of Tailscale so the next build can take the name
-  `k3s-node` again. The logout is scheduled 2 s ahead with `systemd-run`, so the SSH
-  session, which itself runs over Tailscale, ends before the tunnel goes away.
+- **`make down`** does the same with a destroy plan, removes the lease, and then says
+  whether the old Tailscale device still has to be removed (see Gotchas).
 - **Fail closed:** `make up` refuses to build when an old `k3s-node` device is still in the
   tailnet (the new node would join as `k3s-node-1` and the certificate names would break).
 
@@ -51,7 +49,7 @@ make <target>  ─▶ Makefile: AWS_PROFILE=personal (override), AWS_REGION=eu-c
   as personal; `LEASE_MINUTES ?= 180`.
 - `scripts/lab.sh` (POSIX sh, shellcheck-clean): guards (account, Tailscale, lease
   length), instance lookup by tag, capacity-error message on start, lease upsert/delete,
-  wait loops, saved-plan apply, Tailscale logout, kubeconfig fetch.
+  wait loops, saved-plan apply, kubeconfig fetch.
 - `README.md`: "Daily use" table; running model mentions the lease.
 
 ## Verification
@@ -69,9 +67,23 @@ make <target>  ─▶ Makefile: AWS_PROFILE=personal (override), AWS_REGION=eu-c
 | **CloudTrail: who stopped it** | 14:12:44Z `assumed-role/k3s-gitops-lab-autostop` (the lease); the next stop, 14:14:06Z, `user/saboxcalin-admin` (`make stop`) |
 | `make stop` | stopped, `lease removed`; `make status` shows `lease: none`, tailnet `offline` |
 | **Negative: `make extend` while stopped** | `lab: the node is stopped; make start sets a new lease` |
+| `make down` with `yes` (you ran it) | `Resources: 0 added, 0 changed, 2 destroyed.`, `lease removed` |
+| **Negative: `make up` with the old device still in the tailnet** | `lab: an old 'k3s-node' device is still in the tailnet ... the new node joins as k3s-node-1`; nothing was planned or created |
+| **`make up` from nothing** (you ran it, after removing the old device) | new instance `i-0c689738af5e6f2db`, lease set, IP printed |
+| Rebuilt node | tailnet name `k3s-node` (not `-1`), new tailnet IP `100.76.138.124`; `Ready v1.36.4+k3s1`; API certificate names include `k3s-node.taild18d72.ts.net` and the new IP; swap 1024M |
+| Nightly stop after the rebuild | recreated, target = the new instance id |
+| **`make up` again** | `No changes` (no prompt), Ansible `changed=0`: idempotent |
 | `make down` without `yes` | destroy plan shown (`aws_instance.node`, `aws_scheduler_schedule.nightly_stop`: 2 to destroy), then `not applied`; the node kept running |
 
 ## Gotchas
+- **`tailscale logout` does not remove a device.** The first version of `make down` logged
+  the node out before destroying it. Afterwards the device was still listed:
+  `Expired: true`, key expiry moved into the past, name still `k3s-node`. A logout only
+  expires the node key; the device, and its name, stay until deleted in the admin console
+  or through the API. `make down` now says so, and `make up` refuses to build until it is gone.
+- **cloud-init ends "degraded" on every boot** (`cloud-init status` exits 2, `errors: []`):
+  it tries the IPv6 metadata address `fd00:ec2::254` first, and this VPC has no IPv6. The
+  script reports exit 2 as recoverable and only warns on 1.
 - **Scheduler `at()` has no time zone in the string**; it is read in
   `ScheduleExpressionTimezone`. The script always writes UTC and puts local time in the
   description.
