@@ -1,0 +1,10 @@
+- name: Reload systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+- name: Restart k3s
+  ansible.builtin.systemd_service:
+    name: k3s
+    state: restarted
+  # Fresh host under --check: the unit does not exist yet (see tasks/main.yml).
+  when: not (ansible_check_mode and (k3s_binary is changed or k3s_unit is changed))

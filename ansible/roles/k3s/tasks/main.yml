@@ -1,0 +1,94 @@
+- name: Refuse anything but arm64 (the pinned binary is k3s-arm64)
+  ansible.builtin.assert:
+    that: ansible_facts.architecture == "aarch64"
+    fail_msg: "expected aarch64, got {{ ansible_facts.architecture }}"
+    quiet: true
+
+- name: Read this node's Tailscale identity (for the API certificate)
+  ansible.builtin.command: tailscale status --json --self
+  register: ts_status
+  changed_when: false
+  check_mode: false
+
+- name: Certificate names come from Tailscale, not from assumptions
+  ansible.builtin.set_fact:
+    k3s_tls_sans:
+      - "{{ (ts_status.stdout | from_json).Self.DNSName | regex_replace('\\.$', '') }}"
+      - "{{ k3s_node_name }}"
+      - "{{ (ts_status.stdout | from_json).Self.TailscaleIPs | select('search', '^100\\.') | first }}"
+
+- name: K3s binary, verified against the release checksum file
+  ansible.builtin.get_url:
+    url: "{{ k3s_release_url }}/k3s-arm64"
+    checksum: "sha256:{{ k3s_release_url }}/sha256sum-arm64.txt"
+    dest: /usr/local/bin/k3s
+    owner: root
+    group: root
+    mode: "0755"
+  register: k3s_binary
+  notify: Restart k3s
+
+- name: K3s config directory
+  ansible.builtin.file:
+    path: /etc/rancher/k3s
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: K3s config
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: /etc/rancher/k3s/config.yaml
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Restart k3s
+
+- name: K3s systemd unit
+  ansible.builtin.template:
+    src: k3s.service.j2
+    dest: /etc/systemd/system/k3s.service
+    owner: root
+    group: root
+    mode: "0644"
+  register: k3s_unit
+  notify:
+    - Reload systemd
+    - Restart k3s
+
+- name: Apply pending restarts before checking health
+  ansible.builtin.meta: flush_handlers
+
+# On a fresh host under --check, the binary and unit only "would be" installed: there is
+# no k3s service to query yet. On an installed host these still run in check mode.
+- name: Note whether K3s is only simulated
+  ansible.builtin.set_fact:
+    k3s_simulated: "{{ ansible_check_mode and (k3s_binary is changed or k3s_unit is changed) }}"
+
+- name: K3s enabled and running
+  ansible.builtin.systemd_service:
+    name: k3s
+    enabled: true
+    state: started
+  when: not k3s_simulated
+
+- name: Wait until the node reports Ready
+  # argv, not a command string: the string form is split shell-style, which strips the
+  # quotes and turns "Ready" into an identifier that jsonpath rejects.
+  ansible.builtin.command:
+    argv:
+      - /usr/local/bin/k3s
+      - kubectl
+      - get
+      - node
+      - "{{ k3s_node_name }}"
+      - -o
+      - 'jsonpath={.status.conditions[?(@.type=="Ready")].status}'
+  register: node_ready
+  changed_when: false
+  check_mode: false
+  until: node_ready.stdout == "True"
+  retries: 30
+  delay: 5
+  when: not k3s_simulated

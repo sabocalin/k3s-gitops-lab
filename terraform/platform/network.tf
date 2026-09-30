@@ -10,16 +10,27 @@ resource "aws_vpc" "main" {
   tags = { Name = "k3s-gitops-lab" }
 }
 
-# Public subnet: anything launched here gets a public IPv4 address automatically. That
-# address is released when the instance stops, so it costs nothing while idle (an
-# Elastic IP would bill even while stopped; README "Never create").
+# Public subnets, one per availability zone: anything launched here gets a public IPv4
+# address automatically. That address is released when the instance stops, so it costs
+# nothing while idle (an Elastic IP would bill even while stopped; README "Never create").
+# Several zones because a single zone can run out of capacity for an instance type (it
+# happened to t4g.small in eu-central-1a); subnets are free.
 resource "aws_subnet" "public" {
+  for_each = var.public_subnets
+
   vpc_id                  = aws_vpc.main.id
-  cidr_block              = var.public_subnet_cidr
-  availability_zone       = var.availability_zone
+  cidr_block              = each.value
+  availability_zone       = each.key
   map_public_ip_on_launch = true
 
-  tags = { Name = "k3s-gitops-lab-public-${var.availability_zone}" }
+  tags = { Name = "k3s-gitops-lab-public-${each.key}" }
+}
+
+# The single subnet became one entry of the for_each: same object, new address. Without
+# this, Terraform would plan destroy + create, and a subnet in use cannot be destroyed.
+moved {
+  from = aws_subnet.public
+  to   = aws_subnet.public["eu-central-1a"]
 }
 
 # Route to the internet through the internet gateway. No NAT Gateway (~$33/month): the
@@ -41,8 +52,15 @@ resource "aws_route_table" "public" {
 }
 
 resource "aws_route_table_association" "public" {
-  subnet_id      = aws_subnet.public.id
+  for_each = aws_subnet.public
+
+  subnet_id      = each.value.id
   route_table_id = aws_route_table.public.id
+}
+
+moved {
+  from = aws_route_table_association.public
+  to   = aws_route_table_association.public["eu-central-1a"]
 }
 
 # Every VPC comes with a "default" security group that allows all traffic between its

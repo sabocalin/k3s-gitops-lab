@@ -17,7 +17,7 @@ data "aws_ssm_parameter" "ubuntu_ami" {
 resource "aws_instance" "node" {
   ami                    = data.aws_ssm_parameter.ubuntu_ami.insecure_value
   instance_type          = var.instance_type
-  subnet_id              = data.terraform_remote_state.platform.outputs.public_subnet_id
+  subnet_id              = data.terraform_remote_state.platform.outputs.public_subnet_ids[var.availability_zone]
   vpc_security_group_ids = [data.terraform_remote_state.platform.outputs.node_security_group_id]
   iam_instance_profile   = data.terraform_remote_state.platform.outputs.node_instance_profile_name
 

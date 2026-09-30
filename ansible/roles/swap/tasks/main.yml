@@ -1,0 +1,43 @@
+- name: Create the swap file (only if missing)
+  ansible.builtin.command: fallocate -l {{ swap_size_mb }}M {{ swap_file }}
+  args:
+    creates: "{{ swap_file }}"
+  register: swap_created
+
+- name: Swap file is root-only
+  ansible.builtin.file:
+    path: "{{ swap_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  # In --check the file is only "would be created"; it does not exist yet.
+  when: not (ansible_check_mode and swap_created is changed)
+
+- name: Format as swap (only right after creating it)
+  ansible.builtin.command: mkswap {{ swap_file }}
+  when: swap_created is changed
+
+- name: Read active swap areas
+  ansible.builtin.command: cat /proc/swaps
+  register: proc_swaps
+  changed_when: false
+  check_mode: false
+
+- name: Enable the swap file now
+  ansible.builtin.command: swapon {{ swap_file }}
+  when: swap_file not in proc_swaps.stdout
+
+- name: Enable the swap file on boot
+  ansible.builtin.lineinfile:
+    path: /etc/fstab
+    line: "{{ swap_file }} none swap sw 0 0"
+    regexp: '^{{ swap_file | regex_escape }}\s'
+
+- name: Swappiness
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/90-k3s-gitops-lab-swap.conf
+    content: "vm.swappiness = {{ swap_swappiness }}\n"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Apply sysctl

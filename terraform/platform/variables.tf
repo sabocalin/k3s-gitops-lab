@@ -9,10 +9,14 @@ variable "region" {
   default = "eu-central-1"
 }
 
-variable "availability_zone" {
-  description = "Single AZ for the single node. t4g.small is offered in all three eu-central-1 AZs."
-  type        = string
-  default     = "eu-central-1a"
+variable "public_subnets" {
+  description = "One public subnet per AZ (all free). The instance picks one; when a zone runs out of capacity, switch the instance to another zone."
+  type        = map(string)
+  default = {
+    "eu-central-1a" = "10.42.1.0/24"
+    "eu-central-1b" = "10.42.2.0/24"
+    "eu-central-1c" = "10.42.3.0/24"
+  }
 }
 
 variable "vpc_cidr" {
@@ -20,7 +24,3 @@ variable "vpc_cidr" {
   default = "10.42.0.0/16"
 }
 
-variable "public_subnet_cidr" {
-  type    = string
-  default = "10.42.1.0/24"
-}

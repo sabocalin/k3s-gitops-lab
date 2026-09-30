@@ -1,0 +1,6 @@
+all:
+  children:
+    k3s_servers:
+      hosts:
+        k3s-node:              # resolved by ~/.ssh/config (Tailscale MagicDNS, via tsu nc)
+          ansible_user: ubuntu
