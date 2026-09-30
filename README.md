@@ -31,6 +31,22 @@ GitHub Actions ──Tailscale──▶ Kubernetes API (push deploys)
 - Deploys: two paths to separate namespaces, push (`kubectl apply` from Actions)
   and pull (ArgoCD watching this repo).
 
+## Daily use
+
+Everything runs from the laptop with the `personal` AWS profile (`aws login --profile
+personal`) and Tailscale up (`tsu up`); `scripts/lab.sh` refuses any other AWS account.
+
+| Command | What it does |
+|---|---|
+| `make start` | start the node, wait for K3s, print the public IP / sslip.io hostname, set a 3 h lease |
+| `make extend` | move the lease to 3 h from now (`LEASE_MINUTES=60` for another length) |
+| `make stop` | stop the node now and remove the lease |
+| `make status` | node state and address, lease, nightly stop, tailnet |
+| `make plan` | read-only plan of the instance stack |
+| `make up` | build the node from nothing: plan, confirm, apply, Tailscale, Ansible |
+| `make down` | destroy the instance stack (the platform stack stays); plan and confirm first |
+| `make kubeconfig` | fetch the admin kubeconfig into `~/.kube` (a credential: run it yourself) |
+
 ## Cost model
 
 Target: **near $0**, about $1.35–2.10/month. The AWS account is on the **paid plan with no
@@ -51,9 +67,10 @@ eu-central-1 on-demand list prices, before VAT; check the pricing pages.
 | GitHub Actions, GHCR | Free for public repos and public packages | — |
 | Tailscale, Grafana Cloud, Gemini API | Free personal / free tiers | — |
 
-**Running model: stop when idle.** `make stop` / `make start` around each session, a
-nightly auto-stop at 23:00 Europe/Bucharest as a safety net, and a weekly
-destroy-and-rebuild drill that proves everything comes back from git.
+**Running model: stop when idle.** `make start` / `make stop` around each session. Two
+safety nets stop a forgotten node: a **session lease** (every `make start` schedules a stop
+3 hours later) and a nightly auto-stop at 23:00 Europe/Bucharest. A weekly
+destroy-and-rebuild drill proves everything comes back from git.
 
 | Usage (~40 h/month running) | Until 2026-12-31 | After |
 |---|---|---|
