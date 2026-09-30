@@ -9,6 +9,12 @@ variable "region" {
   default = "eu-central-1"
 }
 
+variable "availability_zone" {
+  description = "Zone to run in; must be a key of the platform's public_subnet_ids. eu-central-1a ran out of t4g.small capacity on 2026-09-30; switching zones replaces the instance."
+  type        = string
+  default     = "eu-central-1b"
+}
+
 variable "instance_type" {
   description = "t4g.small: 2 vCPU (burstable), 2 GiB, arm64; free trial until 2026-12-31."
   type        = string

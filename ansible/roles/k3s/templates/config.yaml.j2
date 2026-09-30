@@ -1,0 +1,12 @@
+# Managed by Ansible (k3s-gitops-lab). K3s reads this at start.
+node-name: {{ k3s_node_name }}
+# Names the API server certificate must be valid for, so kubectl can connect over the
+# tailnet (#15) instead of the public IP (port 6443 is closed to the internet).
+tls-san:
+{% for san in k3s_tls_sans %}
+  - {{ san }}
+{% endfor %}
+# Admin kubeconfig readable by root only.
+write-kubeconfig-mode: "0600"
+# Encrypt Kubernetes Secrets at rest in the datastore (off by default).
+secrets-encryption: true

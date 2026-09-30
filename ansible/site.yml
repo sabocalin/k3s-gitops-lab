@@ -1,0 +1,6 @@
+- name: K3s node
+  hosts: k3s_servers
+  become: true
+  roles:
+    - swap
+    - k3s

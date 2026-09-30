@@ -42,6 +42,19 @@ updates:
       python-minor-patch:
         update-types: ["minor", "patch"]
 
+  # Pinned ansible-core for ansible/ (run via ansible/run.sh).
+  - package-ecosystem: "pip"
+    directory: "/ansible"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Bucharest"
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "chore(deps)"
+
   # Base images in app/Dockerfile (pinned by digest; Dependabot bumps tag and digest).
   - package-ecosystem: "docker"
     directory: "/app"
