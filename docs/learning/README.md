@@ -17,3 +17,4 @@ verified, and what surprised us. New notes start from [`_template.md`](_template
 | #14 | [Ansible: swap and K3s over Tailscale SSH](14-ansible-k3s.md) | 1 |
 | #15 | [Local kubeconfig over Tailscale](15-kubeconfig-over-tailscale.md) | 1 |
 | #57 | [AI code review on pull requests](57-ai-review.md) | 0 |
+| #62 | [Nightly auto-stop (EventBridge Scheduler)](62-nightly-autostop.md) | 1 |

@@ -28,3 +28,7 @@ output "tailscale_secret_parameter" {
   description = "Created out of band (aws ssm put-parameter); Terraform never holds its value."
   value       = local.tailscale_secret_parameter
 }
+
+output "autostop_role_arn" {
+  value = aws_iam_role.autostop.arn
+}
