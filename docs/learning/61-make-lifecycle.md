@@ -73,6 +73,8 @@ make <target>  ─▶ Makefile: AWS_PROFILE=personal (override), AWS_REGION=eu-c
 | Rebuilt node | tailnet name `k3s-node` (not `-1`), new tailnet IP `100.76.138.124`; `Ready v1.36.4+k3s1`; API certificate names include `k3s-node.taild18d72.ts.net` and the new IP; swap 1024M |
 | Nightly stop after the rebuild | recreated, target = the new instance id |
 | **`make up` again** | `No changes` (no prompt), Ansible `changed=0`: idempotent |
+| `make kubeconfig` (you ran it) | file 600, no `current-context`, server `k3s-node.taild18d72.ts.net:6443` via `socks5://localhost:1055`; `get nodes` → `Ready`; `no-such-pod` → `NotFound` (a real API answer) |
+| **Negative: public 6443 on the new IP** | `nc` timed out (dropped by the security group); control 443 on the same IP: `Connection refused` (reached the host) |
 | `make down` without `yes` | destroy plan shown (`aws_instance.node`, `aws_scheduler_schedule.nightly_stop`: 2 to destroy), then `not applied`; the node kept running |
 
 ## Gotchas
