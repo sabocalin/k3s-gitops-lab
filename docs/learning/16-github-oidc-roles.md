@@ -94,8 +94,14 @@ An explicit Deny beats any Allow. The decrypt deny also covers reading a parent 
 One expectation was wrong, in the safe direction: `GetParametersByPath` on `/` was
 implicitly denied (I expected `ReadOnlyAccess` to allow it).
 
-**From GitHub** (`aws-oidc-check.yml`): see the table filled in from the PR and the
-`main` runs below.
+**From GitHub** (`aws-oidc-check.yml`):
+
+| Run | Check | Result |
+|---|---|---|
+| PR #75, first try | plan role | **failed**: `Not authorized to perform sts:AssumeRoleWithWebIdentity` (subject format, see Gotchas) |
+| PR #75, after the fix (run 36860440864) | plan role | assumed `assumed-role/k3s-gitops-lab-github-plan/GitHubActions`; DescribeInstances and reading the state work |
+| | **Negative: plan role reads the secret / writes state** | `denied as expected` ×2 |
+| | **Negative: a pull_request token assumes the apply role** | refused |
 
 ## Gotchas
 - **This repo uses GitHub's immutable subject format.** The first PR run failed:
