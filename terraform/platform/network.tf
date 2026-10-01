@@ -2,6 +2,8 @@
 # security groups have no hourly charge. The only network cost is the instance's public
 # IPv4 address, which exists only while the instance runs (instance stack).
 
+# Accepted (trivy): flow logs bill per GB ingested; enable them temporarily when debugging.
+# trivy:ignore:AWS-0178
 resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr
   enable_dns_support   = true
@@ -15,6 +17,9 @@ resource "aws_vpc" "main" {
 # nothing while idle (an Elastic IP would bill even while stopped; README "Never create").
 # Several zones because a single zone can run out of capacity for an instance type (it
 # happened to t4g.small in eu-central-1a); subnets are free.
+# Accepted (trivy): public IPs are the design: no NAT gateway (~$33/month); inbound is
+# limited by the node's security group to 80/443.
+# trivy:ignore:AWS-0164
 resource "aws_subnet" "public" {
   for_each = var.public_subnets
 

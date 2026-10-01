@@ -1,5 +1,8 @@
 # Remote state for every stack in this repo. The account id in the name makes it
 # globally unique (S3 bucket names are shared by all AWS customers).
+# Accepted (trivy): access logging needs a second bucket and adds cost; the bucket is
+# private, versioned, and every access is in CloudTrail (management events).
+# trivy:ignore:AWS-0089
 resource "aws_s3_bucket" "state" {
   bucket = "k3s-gitops-lab-tfstate-${var.account_id}"
 
@@ -20,6 +23,8 @@ resource "aws_s3_bucket_versioning" "state" {
 
 # SSE-S3 (AES256) uses an AWS-managed key: free. A customer-managed KMS key would cost
 # $1/month (README "Never create").
+# Accepted (trivy): no customer-managed key, see above.
+# trivy:ignore:AWS-0132
 resource "aws_s3_bucket_server_side_encryption_configuration" "state" {
   bucket = aws_s3_bucket.state.id
   rule {
