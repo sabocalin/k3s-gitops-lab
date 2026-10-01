@@ -1,0 +1,38 @@
+[project]
+name = "lab-api"
+version = "0.1.0"
+description = "k3s-gitops-lab demo service: /health, /ready, /metrics"
+requires-python = ">=3.13,<3.14"
+# Exact versions; uv.lock pins every transitive package with hashes. Dependabot (uv
+# ecosystem, 7-day cooldown) bumps both.
+dependencies = [
+  "fastapi==0.141.1",
+  "uvicorn==0.53.0",
+  "prometheus-client==0.26.0",
+]
+
+[dependency-groups]
+dev = [
+  "pytest==9.1.1",
+  "httpx2==2.13.1",  # the HTTP client behind the TestClient (Starlette deprecated httpx)
+  "ruff==0.16.8",
+]
+
+[build-system]
+requires = ["uv_build>=0.12,<0.13"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --strict-config"
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+# pycodestyle, pyflakes, isort, bugbear, pyupgrade, bandit (security), async pitfalls
+select = ["E", "W", "F", "I", "B", "UP", "S", "ASYNC"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"] # assert is how pytest checks
