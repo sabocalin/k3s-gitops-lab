@@ -5,7 +5,7 @@
 ## What
 Every PR runs `scripts/lint-terraform.sh` (also `make lint` on the laptop): `terraform
 fmt -check`, `terraform validate` for each stack, **tflint** with the AWS ruleset, and
-**trivy config**. Any failure fails the `terraform-lint` check, which is required to merge.
+**trivy config**. Any failure fails the `terraform-lint` check, which the `main` ruleset requires before merging (next to `zizmor`).
 
 ## Why
 `terraform plan` says *what* will change, not whether the change is wrong or unsafe.
@@ -76,7 +76,10 @@ PR ─▶ terraform-lint job (no AWS credentials, contents: read)
 | `make lint` locally | `all Terraform checks passed` |
 | **Negative: wrong tool hash** | `tflint 0.64.0: SHA-256 mismatch ... refusing to run it`; nothing extracted |
 | **Negative: no AWS configuration at all** (`env -i`) | still passes: the checks need no AWS |
-| CI on the PR | see the PR section below |
+| CI on the PR, good commit (run 36869763396) | passed |
+| **Negative: deliberately bad commit** `85f78c1` (run 36869872671) | **failed** on all three: fmt (`description = "SSH"` misaligned); tflint `"t4g.smal" is an invalid value as instance_type (aws_instance_invalid_type)`, traced from the variable default into `aws_instance`; trivy `AWS-0107 (HIGH): Security group rule allows unrestricted ingress from any IP address` |
+| Revert (run 36870001613) | passed; tree identical to the good commit |
+| Required check | ruleset on `main`: required checks now `zizmor, terraform-lint`; enforcement, conditions, bypass list and other rules unchanged |
 
 ## Gotchas
 - **`init -backend=false` still loads an existing backend.** In a stack already initialized
