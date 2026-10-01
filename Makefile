@@ -10,7 +10,7 @@ export AWS_PROFILE AWS_REGION
 LEASE_MINUTES ?= 180
 export LEASE_MINUTES
 
-.PHONY: help start stop extend status plan up down kubeconfig lint
+.PHONY: help start stop extend status plan up down kubeconfig lint test run
 
 help:
 	@echo 'make start       start the node, stop it again in $$LEASE_MINUTES min (default 180)'
@@ -22,9 +22,17 @@ help:
 	@echo 'make down        destroy the instance stack; the platform stack stays'
 	@echo 'make kubeconfig  fetch the admin kubeconfig into ~/.kube (a credential: run it yourself)'
 	@echo 'make lint        terraform fmt/validate, tflint, trivy (no AWS access; same as CI)'
+	@echo 'make test        app: ruff check, ruff format --check, pytest'
+	@echo 'make run         app: serve on http://localhost:8000 (reload on change)'
 
 start stop extend status plan up down kubeconfig:
 	@scripts/lab.sh $@
 
 lint:
 	@scripts/lint-terraform.sh
+
+test:
+	@cd app && uv run --frozen ruff check . && uv run --frozen ruff format --check . && uv run --frozen pytest
+
+run:
+	@cd app && uv run --frozen uvicorn lab_api.main:app --reload --port 8000

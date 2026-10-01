@@ -2,7 +2,7 @@
 # Security updates (PRs for known vulnerabilities) are enabled in repo settings
 # and run independently of this schedule; cooldown does not delay them.
 #
-# Directories for pip, docker and terraform are created in later phases
+# Directories for uv, pip, docker and terraform are created in later phases
 # (app/ in Phase 2, terraform/ in Phase 1). Until they exist, Dependabot
 # reports "dependency file not found" for those entries; that is expected.
 version: 2
@@ -25,9 +25,9 @@ updates:
       actions:
         patterns: ["*"]
 
-  # FastAPI app (requirements.txt / pyproject.toml).
-  # If Phase 2 settles on uv, switch this to package-ecosystem "uv".
-  - package-ecosystem: "pip"
+  # FastAPI app: pyproject.toml + uv.lock (#19). The uv ecosystem bumps the exact pin in
+  # pyproject.toml and relocks, so uv.lock (versions + hashes) stays in step.
+  - package-ecosystem: "uv"
     directory: "/app"
     schedule:
       interval: "weekly"

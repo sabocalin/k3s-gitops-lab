@@ -47,6 +47,7 @@ personal`) and Tailscale up (`tsu up`); `scripts/lab.sh` refuses any other AWS a
 | `make down` | destroy the instance stack (the platform stack stays); plan and confirm first |
 | `make kubeconfig` | fetch the admin kubeconfig into `~/.kube` (a credential: run it yourself) |
 | `make lint` | `terraform fmt`/`validate`, tflint, trivy: the same checks as CI, no AWS access |
+| `make test` / `make run` | the app (`app/`): ruff + pytest / serve on `localhost:8000` |
 
 ## Cost model
 

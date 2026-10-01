@@ -18,6 +18,7 @@ verified, and what surprised us. New notes start from [`_template.md`](_template
 | #15 | [Local kubeconfig over Tailscale](15-kubeconfig-over-tailscale.md) | 1 |
 | #16 | [GitHub OIDC: plan role (PRs) and apply role (main)](16-github-oidc-roles.md) | 1 |
 | #17 | [Terraform checks in CI: fmt, validate, tflint, trivy](17-terraform-lint.md) | 1 |
+| #19 | [FastAPI scaffold: /health, /ready, /metrics](19-fastapi-scaffold.md) | 2 |
 | #57 | [AI code review on pull requests](57-ai-review.md) | 0 |
 | #61 | [`make start / stop / extend / status / up / down`](61-make-lifecycle.md) | 1 |
 | #62 | [Nightly auto-stop (EventBridge Scheduler)](62-nightly-autostop.md) | 1 |
