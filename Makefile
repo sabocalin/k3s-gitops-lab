@@ -10,7 +10,7 @@ export AWS_PROFILE AWS_REGION
 LEASE_MINUTES ?= 180
 export LEASE_MINUTES
 
-.PHONY: help start stop extend status plan up down kubeconfig lint test run
+.PHONY: help start stop extend status plan up down kubeconfig lint test run image
 
 help:
 	@echo 'make start       start the node, stop it again in $$LEASE_MINUTES min (default 180)'
@@ -24,6 +24,7 @@ help:
 	@echo 'make lint        terraform fmt/validate, tflint, trivy (no AWS access; same as CI)'
 	@echo 'make test        app: ruff check, ruff format --check, pytest'
 	@echo 'make run         app: serve on http://localhost:8000 (reload on change)'
+	@echo 'make image       app: build the container image lab-api:dev (linux/arm64)'
 
 start stop extend status plan up down kubeconfig:
 	@scripts/lab.sh $@
@@ -36,3 +37,6 @@ test:
 
 run:
 	@cd app && uv run --frozen uvicorn lab_api.main:app --reload --port 8000
+
+image:
+	@docker build --platform linux/arm64 -t lab-api:dev app
