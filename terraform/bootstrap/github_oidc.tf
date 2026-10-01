@@ -10,7 +10,11 @@
 # IAM, the VPC or the budget, so network and IAM changes stay a laptop apply.
 
 locals {
-  github_repo     = "sabocalin/k3s-gitops-lab"
+  # GitHub's immutable subject format (this repo's OIDC setting, use_immutable_subject):
+  # repo:<owner>@<owner id>/<repo>@<repo id>:<context>. The ids never change, so a renamed
+  # or re-created repo with the same name cannot inherit these roles.
+  # Ids: gh api repos/sabocalin/k3s-gitops-lab --jq '.owner.id, .id'
+  github_sub      = "repo:sabocalin@238511101/k3s-gitops-lab@1385841640"
   oidc_host       = "token.actions.githubusercontent.com"
   state_bucket    = aws_s3_bucket.state.arn
   secrets_path    = "arn:aws:ssm:${var.region}:${var.account_id}:parameter/k3s-gitops-lab/*"
@@ -46,7 +50,7 @@ data "aws_iam_policy_document" "plan_trust" {
     condition {
       test     = "StringEquals"
       variable = "${local.oidc_host}:sub"
-      values   = ["repo:${local.github_repo}:pull_request"]
+      values   = ["${local.github_sub}:pull_request"]
     }
   }
 }
@@ -68,7 +72,7 @@ data "aws_iam_policy_document" "apply_trust" {
     condition {
       test     = "StringEquals"
       variable = "${local.oidc_host}:sub"
-      values   = ["repo:${local.github_repo}:environment:production"]
+      values   = ["${local.github_sub}:environment:production"]
     }
   }
 }

@@ -23,7 +23,8 @@ Alternatives considered:
 ## How it works
 ```
 GitHub job ──(1) asks GitHub for an OIDC token: aud=sts.amazonaws.com,
-             sub=repo:sabocalin/k3s-gitops-lab:pull_request | …:environment:production
+             sub=repo:sabocalin@238511101/k3s-gitops-lab@1385841640:pull_request
+                 | …:environment:production
          ──(2) sts:AssumeRoleWithWebIdentity(token, role)
 AWS STS  ──(3) checks the signature against the identity provider
               (token.actions.githubusercontent.com), then the role's trust policy:
@@ -97,6 +98,17 @@ implicitly denied (I expected `ReadOnlyAccess` to allow it).
 `main` runs below.
 
 ## Gotchas
+- **This repo uses GitHub's immutable subject format.** The first PR run failed:
+  `Not authorized to perform sts:AssumeRoleWithWebIdentity`, 12 retries. CloudTrail's
+  failed `AssumeRoleWithWebIdentity` events show the subject GitHub actually sent:
+  `repo:sabocalin@238511101/k3s-gitops-lab@1385841640:pull_request`. That is owner and
+  repo **ids** next to the names (`gh api repos/<repo>/actions/oidc/customization/sub`
+  shows `use_immutable_subject: true`). The trust policies had the classic
+  `repo:sabocalin/k3s-gitops-lab:…`. The ids make it stricter: a renamed or re-created
+  repo with the same name cannot inherit the roles.
+- **A negative control that passes proves nothing on its own.** In that first run
+  "apply role refuses the pull_request token" passed, but so would any broken trust.
+  It means something only next to a positive control that works.
 - **The environment, not AWS, checks the branch.** An `environment:production` token does
   not say which branch it came from, so the environment's branch policy is part of the
   security boundary. Do not loosen it to "all branches".
