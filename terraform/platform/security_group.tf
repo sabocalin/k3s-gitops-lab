@@ -41,3 +41,13 @@ resource "aws_vpc_security_group_egress_rule" "all" {
   cidr_ipv4         = "0.0.0.0/0"
   ip_protocol       = "-1"
 }
+
+# DELIBERATELY BAD (#17 demo, reverted in the next commit): SSH open to the internet.
+resource "aws_vpc_security_group_ingress_rule" "ssh" {
+  security_group_id = aws_security_group.node.id
+  description = "SSH"
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "tcp"
+  from_port         = 22
+  to_port           = 22
+}

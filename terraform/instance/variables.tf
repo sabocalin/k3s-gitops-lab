@@ -19,7 +19,7 @@ variable "availability_zone" {
 variable "instance_type" {
   description = "t4g.small: 2 vCPU (burstable), 2 GiB, arm64; free trial until 2026-12-31."
   type        = string
-  default     = "t4g.small"
+  default     = "t4g.smal"
 }
 
 variable "root_volume_gb" {
