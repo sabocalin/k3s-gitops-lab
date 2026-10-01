@@ -1,0 +1,7 @@
+# Only pyproject.toml, uv.lock and src/ are needed; keep everything else out of the
+# build context (smaller, faster, and no local files leak into an image).
+*
+!pyproject.toml
+!uv.lock
+!src/
+**/__pycache__

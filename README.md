@@ -48,6 +48,20 @@ personal`) and Tailscale up (`tsu up`); `scripts/lab.sh` refuses any other AWS a
 | `make kubeconfig` | fetch the admin kubeconfig into `~/.kube` (a credential: run it yourself) |
 | `make lint` | `terraform fmt`/`validate`, tflint, trivy: the same checks as CI, no AWS access |
 | `make test` / `make run` | the app (`app/`): ruff + pytest / serve on `localhost:8000` |
+| `make image` | build the container image `lab-api:dev` (linux/arm64) |
+
+## Container image
+
+`app/Dockerfile`, two stages. The build stage installs the locked dependencies with hash
+checks. The final stage is distroless Python (`gcr.io/distroless/python3-debian13:nonroot`):
+no shell, no package manager, UID/GID **65532**, code owned by root and not writable,
+works with a read-only root filesystem. All bases are pinned by digest.
+
+| Image (linux/arm64) | Compressed | On disk |
+|---|---|---|
+| **lab-api** | **27.9 MB** | **126 MB** |
+| distroless base alone | 22.6 MB | 103 MB |
+| `python:3.13-slim` base alone (the alternative) | 43.3 MB | 202 MB |
 
 ## Cost model
 

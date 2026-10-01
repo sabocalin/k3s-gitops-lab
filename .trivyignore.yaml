@@ -1,0 +1,11 @@
+# Accepted trivy findings that cannot be ignored inline, because they belong to a whole file
+# rather than a line. Inline ignores (`# trivy:ignore:<id>` above the code) are preferred.
+# Use from the repo root, scanning ".": paths are relative to the scan target.
+#   trivy config --ignorefile .trivyignore.yaml .
+misconfigurations:
+  - id: DS-0026
+    paths:
+      - app/Dockerfile
+    statement: >-
+      No HEALTHCHECK: Kubernetes ignores Docker HEALTHCHECK and probes /health and /ready
+      itself (#29); distroless has no curl to run one with.
