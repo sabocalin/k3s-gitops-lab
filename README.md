@@ -24,7 +24,7 @@ GitHub Actions ──Tailscale──▶ Kubernetes API (push deploys)
 
   | Stack | Contents | Lifetime |
   |---|---|---|
-  | `terraform/bootstrap` | state bucket, budget alert, alternate contacts | permanent |
+  | `terraform/bootstrap` | state bucket, budget alert, alternate contacts, GitHub OIDC roles | permanent |
   | `terraform/platform` | VPC, public subnet, internet gateway, security groups, IAM, SSM | permanent (all free) |
   | `terraform/instance` | the EC2 instance | stopped when idle, destroyed and rebuilt weekly |
 - Images: built natively for arm64 in GitHub Actions, pushed to GHCR, signed.
@@ -107,6 +107,20 @@ These are easy to add by accident and break the near-$0 target.
 | Route 53 hosted zone | $0.50/month | `<ip>.sslip.io` wildcard DNS |
 | Customer-managed KMS key | $1/month | AWS-managed keys (`aws/ssm`, `aws/s3`) |
 | VPC interface endpoints | ~$7/month per AZ | Public AWS endpoints over the instance's public IP |
+
+## CI access to AWS (GitHub OIDC)
+
+No AWS access keys exist anywhere. GitHub Actions gets one-hour credentials by trading
+a GitHub-signed OIDC token for a role. Both roles are in the bootstrap stack, which is
+applied only from the laptop, so CI can never change its own permissions.
+
+| Role | Assumable by | Can | Cannot |
+|---|---|---|---|
+| `k3s-gitops-lab-github-plan` | `pull_request` runs of this repo | read everything (`ReadOnlyAccess`), write Terraform lock files | write state, change anything, read the Tailscale secret |
+| `k3s-gitops-lab-github-apply` | jobs in the `production` environment (`main` only) | run, start, stop and terminate the project's instance (`t4g.small`/`t4g.medium`, Ubuntu image, project subnet and security group); manage `k3s-gitops-lab-*` schedules; write the instance stack's state | change IAM, the VPC, security groups or the budget; read the secret |
+
+Network, IAM and budget changes are applied from the laptop (admin with MFA). Details and
+the verification: [docs/learning/16-github-oidc-roles.md](docs/learning/16-github-oidc-roles.md).
 
 ## Design notes
 
