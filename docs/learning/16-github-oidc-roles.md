@@ -102,6 +102,9 @@ implicitly denied (I expected `ReadOnlyAccess` to allow it).
 | PR #75, after the fix (run 36860440864) | plan role | assumed `assumed-role/k3s-gitops-lab-github-plan/GitHubActions`; DescribeInstances and reading the state work |
 | | **Negative: plan role reads the secret / writes state** | `denied as expected` ×2 |
 | | **Negative: a pull_request token assumes the apply role** | refused |
+| `workflow_dispatch` on `main` (run 36866801061) | apply role | assumed `assumed-role/k3s-gitops-lab-github-apply/GitHubActions`; dry-run stop and start of `i-0c689738af5e6f2db`: `allowed` |
+| | **Negative: create a VPC / create a role / read the secret** | `denied as expected` ×3 |
+| `workflow_dispatch` on a probe branch (run 36866811778) | **Negative: environment gate** | job never started: `Branch "oidc-env-gate-probe" is not allowed to deploy to production due to environment protection rules.` |
 
 ## Gotchas
 - **This repo uses GitHub's immutable subject format.** The first PR run failed:
