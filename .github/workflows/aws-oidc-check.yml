@@ -1,0 +1,128 @@
+# #16: proves the GitHub OIDC roles from GitHub's side (where the trust rules apply).
+#
+#   pull_request       plan role works, but cannot read the secret or write state;
+#                      the apply role refuses a pull_request token (negative control)
+#   workflow_dispatch  apply role from main via the production environment: may stop
+#                      and start the node (dry run), may not touch the network or the secret
+#
+# Dry runs (`--dry-run`) ask EC2 "would this be allowed?" without doing it:
+# DryRunOperation = allowed, UnauthorizedOperation = denied.
+name: aws-oidc-check
+
+on:
+  pull_request:
+    paths:
+      - terraform/bootstrap/github_oidc.tf
+      - .github/workflows/aws-oidc-check.yml
+  workflow_dispatch:
+
+# Deny everything at workflow level; each job asks for exactly what it needs.
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  AWS_REGION: eu-central-1
+  PLAN_ROLE: arn:aws:iam::466558795290:role/k3s-gitops-lab-github-plan
+  APPLY_ROLE: arn:aws:iam::466558795290:role/k3s-gitops-lab-github-apply
+  SECRET: /k3s-gitops-lab/tailscale/oauth-client-secret
+  STATE_BUCKET: k3s-gitops-lab-tfstate-466558795290
+
+jobs:
+  plan-role:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write # request the OIDC token; nothing else
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ env.PLAN_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Plan role reads, but cannot read the secret or write state
+        run: |
+          set -u
+          # Only the parameter's name is ever printed, even if the read wrongly succeeded.
+          denied() {
+            if out=$("$@" 2>&1); then echo "::error::ALLOWED, expected denied: $1 $2 $3"; exit 1; fi
+            case $out in
+              *AccessDenied* | *UnauthorizedOperation* | *"not authorized"*) echo "denied as expected: $1 $2 $3" ;;
+              *) echo "::error::failed for another reason: $out"; exit 1 ;;
+            esac
+          }
+          aws sts get-caller-identity --query Arn --output text
+          aws ec2 describe-instances --filters Name=tag:Project,Values=k3s-gitops-lab \
+            --query 'length(Reservations)' --output text
+          aws s3api head-object --bucket "$STATE_BUCKET" --key instance/terraform.tfstate \
+            --query ContentLength --output text
+          denied aws ssm get-parameter --name "$SECRET" --with-decryption --query Parameter.Name
+          echo '{}' > probe.json
+          denied aws s3api put-object --bucket "$STATE_BUCKET" --key instance/oidc-probe --body probe.json
+
+  apply-role-refuses-pull-request:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+    steps:
+      - id: assume
+        continue-on-error: true
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ env.APPLY_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: The assume must have failed
+        env:
+          OUTCOME: ${{ steps.assume.outcome }}
+        run: |
+          if [ "$OUTCOME" != failure ]; then
+            echo "::error::a pull_request token assumed the apply role"
+            exit 1
+          fi
+          echo "apply role refused the pull_request token, as expected"
+
+  apply-role:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    # GitHub runs this job only on branches the environment allows (main); its OIDC token
+    # then says environment:production, the one subject the apply role trusts.
+    environment: production
+    permissions:
+      id-token: write
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ env.APPLY_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Apply role may manage the node, nothing else
+        run: |
+          set -u
+          denied() {
+            if out=$("$@" 2>&1); then echo "::error::ALLOWED, expected denied: $1 $2 $3"; exit 1; fi
+            case $out in
+              *AccessDenied* | *UnauthorizedOperation* | *"not authorized"*) echo "denied as expected: $1 $2 $3" ;;
+              *) echo "::error::failed for another reason: $out"; exit 1 ;;
+            esac
+          }
+          dry_run_allowed() {
+            out=$("$@" --dry-run 2>&1) || true
+            case $out in
+              *DryRunOperation*) echo "allowed (dry run): $1 $2 $3" ;;
+              *) echo "::error::expected allowed: $out"; exit 1 ;;
+            esac
+          }
+          aws sts get-caller-identity --query Arn --output text
+          id=$(aws ec2 describe-instances \
+            --filters Name=tag:Project,Values=k3s-gitops-lab Name=instance-state-name,Values=running,stopped \
+            --query 'Reservations[0].Instances[0].InstanceId' --output text)
+          echo "node: $id"
+          dry_run_allowed aws ec2 stop-instances --instance-ids "$id"
+          dry_run_allowed aws ec2 start-instances --instance-ids "$id"
+          denied aws ec2 create-vpc --cidr-block 10.99.0.0/16 --dry-run
+          denied aws iam create-role --role-name oidc-probe --assume-role-policy-document '{}'
+          denied aws ssm get-parameter --name "$SECRET" --with-decryption --query Parameter.Name
