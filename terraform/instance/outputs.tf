@@ -1,5 +1,6 @@
 output "instance_id" {
-  value = aws_instance.node.id
+  description = "The node; changes on every rebuild."
+  value       = aws_instance.node.id
 }
 
 locals {
@@ -18,5 +19,6 @@ output "sslip_hostname" {
 }
 
 output "ami" {
-  value = aws_instance.node.ami
+  description = "Image the node was built from (ignored by later plans until a rebuild)."
+  value       = aws_instance.node.ami
 }

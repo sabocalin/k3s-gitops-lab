@@ -1,6 +1,7 @@
 # Read by the instance stack (terraform/instance) through terraform_remote_state.
 output "vpc_id" {
-  value = aws_vpc.main.id
+  description = "The project VPC (10.42.0.0/16)."
+  value       = aws_vpc.main.id
 }
 
 output "public_subnet_ids" {
@@ -9,19 +10,23 @@ output "public_subnet_ids" {
 }
 
 output "region" {
-  value = var.region
+  description = "Region of every stack."
+  value       = var.region
 }
 
 output "node_security_group_id" {
-  value = aws_security_group.node.id
+  description = "Security group for the node: inbound 80/443 only."
+  value       = aws_security_group.node.id
 }
 
 output "node_instance_profile_name" {
-  value = aws_iam_instance_profile.node.name
+  description = "Instance profile carrying the node role."
+  value       = aws_iam_instance_profile.node.name
 }
 
 output "node_role_arn" {
-  value = aws_iam_role.node.arn
+  description = "The node role (one SSM parameter + Session Manager)."
+  value       = aws_iam_role.node.arn
 }
 
 output "tailscale_secret_parameter" {
@@ -30,5 +35,6 @@ output "tailscale_secret_parameter" {
 }
 
 output "autostop_role_arn" {
-  value = aws_iam_role.autostop.arn
+  description = "Role EventBridge Scheduler uses to stop the node (nightly stop, lease)."
+  value       = aws_iam_role.autostop.arn
 }

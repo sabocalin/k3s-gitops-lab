@@ -5,8 +5,9 @@ variable "account_id" {
 }
 
 variable "region" {
-  type    = string
-  default = "eu-central-1"
+  description = "Region of the node (must match the platform stack)."
+  type        = string
+  default     = "eu-central-1"
 }
 
 variable "availability_zone" {

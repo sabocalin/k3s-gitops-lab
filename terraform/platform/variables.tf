@@ -5,8 +5,9 @@ variable "account_id" {
 }
 
 variable "region" {
-  type    = string
-  default = "eu-central-1"
+  description = "Region for every resource in this stack."
+  type        = string
+  default     = "eu-central-1"
 }
 
 variable "public_subnets" {
@@ -20,7 +21,8 @@ variable "public_subnets" {
 }
 
 variable "vpc_cidr" {
-  type    = string
-  default = "10.42.0.0/16"
+  description = "Address range of the project VPC; subnets are /24s inside it."
+  type        = string
+  default     = "10.42.0.0/16"
 }
 

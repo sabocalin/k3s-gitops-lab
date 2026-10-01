@@ -4,5 +4,6 @@ output "state_bucket" {
 }
 
 output "region" {
-  value = var.region
+  description = "Region of the state bucket and every stack."
+  value       = var.region
 }

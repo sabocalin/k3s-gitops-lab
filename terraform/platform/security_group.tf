@@ -31,6 +31,10 @@ resource "aws_vpc_security_group_ingress_rule" "https" {
 
 # Outbound unrestricted: apt, GHCR image pulls, Tailscale, Let's Encrypt, Grafana Cloud.
 # A stateful security group lets replies to these connections back in automatically.
+# Accepted (trivy): the node must reach apt mirrors, GHCR, Tailscale (DERP/STUN and
+# direct UDP to peers), Let's Encrypt and Grafana Cloud, whose addresses change. A port
+# allow-list would still need 0.0.0.0/0 as destination, which this check flags anyway.
+# trivy:ignore:AWS-0104
 resource "aws_vpc_security_group_egress_rule" "all" {
   security_group_id = aws_security_group.node.id
   description       = "All outbound"
