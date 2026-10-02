@@ -4,6 +4,7 @@
 #   pull_request  build + vulnerability scan + smoke test; this job cannot write packages
 #   push to main  the same, then push ghcr.io/sabocalin/k3s-gitops-lab/lab-api:<sha>
 #                 with signed build provenance and an SBOM attestation (#24)
+#                 and a keyless cosign signature (#25)
 #
 # Plain `docker buildx` (preinstalled on the runner) instead of docker/build-push-action:
 # one less action to trust, and every flag is visible here.
@@ -16,6 +17,8 @@ on:
       - scripts/smoke-image.sh
       - scripts/scan-image.sh
       - scripts/sbom-image.sh
+      - scripts/sign-image.sh
+      - scripts/verify-image.sh
       - scripts/lib/tools.sh
       - .trivyignore.yaml
       - .github/workflows/image.yml
@@ -26,6 +29,8 @@ on:
       - scripts/smoke-image.sh
       - scripts/scan-image.sh
       - scripts/sbom-image.sh
+      - scripts/sign-image.sh
+      - scripts/verify-image.sh
       - scripts/lib/tools.sh
       - .trivyignore.yaml
       - .github/workflows/image.yml
@@ -84,7 +89,7 @@ jobs:
     permissions:
       contents: read
       packages: write # push the image and its attestations to ghcr.io/<owner>/...
-      id-token: write # OIDC token -> Sigstore (Fulcio) signing certificate for the attestations
+      id-token: write # OIDC token -> Sigstore (Fulcio) certificate: attestations and cosign signature
       attestations: write # store the attestations on GitHub
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -161,6 +166,14 @@ jobs:
           sbom-path: sbom.cdx.json
           push-to-registry: true
           create-storage-record: false
+
+      # #25: a cosign signature over the digest, keyless (same OIDC identity as above),
+      # stored in GHCR next to the image; sign-image.sh verifies it straight after.
+      # Check from anywhere: scripts/verify-image.sh <image>@sha256:<digest>
+      - name: Sign with cosign (keyless) and verify
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: scripts/sign-image.sh "$IMAGE@$DIGEST"
 
       - name: Log out of GHCR
         if: always()

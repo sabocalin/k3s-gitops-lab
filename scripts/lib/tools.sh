@@ -6,6 +6,9 @@
 
 TFLINT_VERSION=0.64.0
 TRIVY_VERSION=0.74.0
+# cosign's own release check: these hashes match cosign_checksums.txt, whose signature
+# verifies as keyless@projectsigstore.iam.gserviceaccount.com (issuer accounts.google.com).
+COSIGN_VERSION=3.1.3
 TOOLS=${LINT_TOOLS_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/k3s-gitops-lab/tools}
 
 tools_die() {
@@ -22,6 +25,9 @@ tool_asset() {
     trivy:Linux-x86_64) echo "trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz 2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a" ;;
     trivy:Linux-aarch64) echo "trivy_${TRIVY_VERSION}_Linux-ARM64.tar.gz b94ce1976bbf3c15b514b605ee88be7c6d94a29be2302847ff01cb794d47aad5" ;;
     trivy:Darwin-arm64) echo "trivy_${TRIVY_VERSION}_macOS-ARM64.tar.gz 1caada5e0e2091909357c7525d3aa76f4b660b13821bc143b190c7483e31cc11" ;;
+    cosign:Linux-aarch64) echo "cosign-linux-arm64 c5d324e091826b0d7a78eb16fef316450b4eb9aaec045611c08ba06f5e73220a" ;;
+    cosign:Linux-x86_64) echo "cosign-linux-amd64 4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71" ;;
+    cosign:Darwin-arm64) echo "cosign-darwin-arm64 5cf948c2f4dfe59687bdd0b8523709067383e03982cc543475c8a7dc70e92a76" ;;
     *) return 1 ;;
   esac
 }
@@ -34,11 +40,12 @@ sha256_of() {
   fi
 }
 
-# fetch_tool <tflint|trivy>: prints the path of the verified binary.
+# fetch_tool <tflint|trivy|cosign>: prints the path of the verified binary.
 fetch_tool() {
   case $1 in
     tflint) version=$TFLINT_VERSION base=https://github.com/terraform-linters/tflint/releases/download/v$TFLINT_VERSION ;;
     trivy) version=$TRIVY_VERSION base=https://github.com/aquasecurity/trivy/releases/download/v$TRIVY_VERSION ;;
+    cosign) version=$COSIGN_VERSION base=https://github.com/sigstore/cosign/releases/download/v$COSIGN_VERSION ;;
     *) tools_die "unknown tool $1" ;;
   esac
   pinned=$(tool_asset "$1") || tools_die "no pinned $1 hash for $(uname -s)-$(uname -m)"
@@ -54,10 +61,10 @@ fetch_tool() {
       tools_die "$1 $version: SHA-256 mismatch (expected $expected, got $actual); refusing to run it"
     fi
     case $archive in
-      *.zip) unzip -oq "$archive" "$1" -d "$dir" ;;
-      *.tar.gz) tar -xzf "$archive" -C "$dir" "$1" ;;
+      *.zip) unzip -oq "$archive" "$1" -d "$dir" && rm -f "$archive" ;;
+      *.tar.gz) tar -xzf "$archive" -C "$dir" "$1" && rm -f "$archive" ;;
+      *) mv "$archive" "$dir/$1" && chmod +x "$dir/$1" ;; # a plain binary (cosign)
     esac
-    rm -f "$archive"
   fi
   printf '%s\n' "$dir/$1"
 }
