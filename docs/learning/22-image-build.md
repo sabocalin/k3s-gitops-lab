@@ -57,6 +57,11 @@ push to main  image-publish  contents: read,           build ─▶ smoke test �
 | **Negative: wrong expected version** | `FAIL: / should report version something-else, got: {"...version":"local-test"...}` |
 | **Negative: run as root** (`SMOKE_RUN_ARGS="--user 0"`) | `FAIL: process should run as UID 65532, got '0'` |
 | PR run 37002294063 | `image-build` on `ubuntu-24.04-arm`, 20 s: build, then smoke test with the commit SHA: all `ok`; `image-publish` skipped |
+| `main` run 37002939675 (merge `928322f`) | `image-publish`: smoke test passed, then pushed `lab-api@sha256:29e42bb5cc593a82813abc90e4e7e0d4cacd007b50f91762cec899ecd6a50532` |
+| **Public, from the consumer's side** | anonymous registry token works; tags: only `928322f2dcc5e81e397eedb946e40a98190c0893` |
+| arm64 manifest | `application/vnd.docker.distribution.manifest.v2+json`, config `linux/arm64`, user `65532:65532`, `APP_VERSION` = the SHA, labels `source` + `revision` |
+| **Negative: `:latest`** | `GET manifests/latest` → HTTP 404 |
+| Anonymous pull + smoke test | `DOCKER_CONFIG` = an empty directory (no saved logins): `docker pull` by digest worked; smoke test on the pulled image: all checks passed |
 
 ## Gotchas
 - **`docker top -eo uid` fails** with `Couldn't find PID field in ps output`: Docker needs a
@@ -64,6 +69,10 @@ push to main  image-publish  contents: read,           build ─▶ smoke test �
 - **A negative control must reach the check it targets.** Running the smoke test against
   `python:3.13-slim` failed at `/health` (no app), before the UID and shell checks; it proved
   nothing about them. `--user 0` on the real image reaches the UID check.
+
+- **The package came out public on the first push.** It is linked to this public repo (the
+  `source` label, pushed with the repo's `GITHUB_TOKEN`) and took the repo's visibility; no
+  manual switch was needed.
 
 ## Further reading
 - [GitHub-hosted arm64 runners](https://docs.github.com/en/actions/using-github-hosted-runners/using-github-hosted-runners/about-github-hosted-runners#standard-github-hosted-runners-for-public-repositories)
