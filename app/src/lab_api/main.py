@@ -12,7 +12,6 @@ stays 503 until the work completes.
 """
 
 import asyncio
-import json  # DELIBERATELY BAD (#21 demo): unused import
 import os
 import socket
 import time
@@ -91,7 +90,7 @@ def create_app(startup: Startup = default_startup) -> FastAPI:
 
     @app.get("/health")
     async def health() -> dict[str, str]:
-        return {"status": "OK"}  # DELIBERATELY BAD (#21 demo): breaks the contract
+        return {"status": "ok"}
 
     @app.get("/ready")
     async def ready() -> JSONResponse:
