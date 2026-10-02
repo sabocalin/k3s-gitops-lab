@@ -27,8 +27,7 @@ RUN python -m compileall -q /app/lab_api
 # Distroless Python (Debian 13, Python 3.13), tag "nonroot" = UID/GID 65532.
 # No HEALTHCHECK: Kubernetes ignores it and probes /health and /ready itself (#29);
 # distroless also has no curl to run one with (trivy DS-0026, accepted in .trivyignore.yaml).
-# DELIBERATELY OUTDATED (#23 demo, reverted next): python 3.13.0 slim from 2024-10-18
-FROM python:3.13.0-slim-bookworm@sha256:0de818129b26ed8f46fd772f540c80e277b67a28229531a1ba0fdacfaed19bcb
+FROM gcr.io/distroless/python3-debian13:nonroot@sha256:774595d652a294b54c9bd575b2d9fdd1a4b47547dc17b8bfa4c0e953c64855b3
 # Files stay owned by root and are not writable by the app user: the process cannot
 # modify its own code. Precompiled bytecode means nothing needs writing at runtime, so the
 # container also runs with a read-only root filesystem.
