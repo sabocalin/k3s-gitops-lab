@@ -1,8 +1,8 @@
 # #22: build the app image natively on arm64 (the node is a Graviton t4g) and, on main,
 # push it to GHCR tagged with the full git SHA. Never a :latest tag.
 #
-#   pull_request  build + smoke test only; this job cannot write packages
-#   push to main  build + smoke test, then push ghcr.io/sabocalin/k3s-gitops-lab/lab-api:<sha>
+#   pull_request  build + vulnerability scan + smoke test; this job cannot write packages
+#   push to main  the same, then push ghcr.io/sabocalin/k3s-gitops-lab/lab-api:<sha>
 #
 # Plain `docker buildx` (preinstalled on the runner) instead of docker/build-push-action:
 # one less action to trust, and every flag is visible here.
@@ -13,12 +13,18 @@ on:
     paths:
       - app/**
       - scripts/smoke-image.sh
+      - scripts/scan-image.sh
+      - scripts/lib/tools.sh
+      - .trivyignore.yaml
       - .github/workflows/image.yml
   push:
     branches: [main]
     paths:
       - app/**
       - scripts/smoke-image.sh
+      - scripts/scan-image.sh
+      - scripts/lib/tools.sh
+      - .trivyignore.yaml
       - .github/workflows/image.yml
   workflow_dispatch:
 
@@ -57,6 +63,9 @@ jobs:
             --tag "$IMAGE:$GITHUB_SHA" \
             --load
 
+      - name: Vulnerability scan (fails on fixable HIGH/CRITICAL)
+        run: scripts/scan-image.sh "$IMAGE:$GITHUB_SHA"
+
       - name: Smoke test
         run: scripts/smoke-image.sh "$IMAGE:$GITHUB_SHA" "$GITHUB_SHA"
 
@@ -87,7 +96,12 @@ jobs:
             --tag "$IMAGE:$GITHUB_SHA" \
             --load
 
-      # Nothing is pushed unless the image works from the outside.
+      # Nothing is pushed unless the image has no fixable HIGH/CRITICAL vulnerability
+      # and works from the outside. The scan comes first: static, and it rejects a bad
+      # base before anything runs.
+      - name: Vulnerability scan (fails on fixable HIGH/CRITICAL)
+        run: scripts/scan-image.sh "$IMAGE:$GITHUB_SHA"
+
       - name: Smoke test
         run: scripts/smoke-image.sh "$IMAGE:$GITHUB_SHA" "$GITHUB_SHA"
 

@@ -4,39 +4,18 @@
 # No AWS access: everything reads the code only. Every check runs even if an earlier one
 # fails; the script exits 1 if any failed.
 #
-# tflint and trivy are downloaded at exact versions and checked against SHA-256 hashes
-# pinned here, not taken from a third-party action (Trivy's own GitHub Action tags were
-# hijacked in March 2026). Bump by hand: new version + both hashes from the release's
-# checksums file.
+# tflint and trivy: exact versions, SHA-256 checked (scripts/lib/tools.sh).
 set -eu
-
-TFLINT_VERSION=0.64.0
-TRIVY_VERSION=0.74.0
 
 die() {
   printf 'lint: %s\n' "$*" >&2
   exit 1
 }
 
-case "$(uname -s)-$(uname -m)" in
-  Linux-x86_64)
-    tflint_asset=tflint_linux_amd64.zip
-    tflint_sha256=cca9d13e2e1d7a2c627af60ff899a3c9b74212899416aeb96ec764d2ef954537
-    trivy_asset=trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz
-    trivy_sha256=2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a
-    ;;
-  Darwin-arm64)
-    tflint_asset=tflint_darwin_arm64.zip
-    tflint_sha256=2496e9cb3d24992d553b45e7c87a0fdc9449ca975233876247a9bfeda857e6c0
-    trivy_asset=trivy_${TRIVY_VERSION}_macOS-ARM64.tar.gz
-    trivy_sha256=1caada5e0e2091909357c7525d3aa76f4b660b13821bc143b190c7483e31cc11
-    ;;
-  *) die "no pinned tool hashes for $(uname -s)-$(uname -m)" ;;
-esac
-
 cd "$(dirname "$0")/.."
 ROOT=$(pwd)
-TOOLS=${LINT_TOOLS_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/k3s-gitops-lab/tools}
+# shellcheck source=scripts/lib/tools.sh
+. scripts/lib/tools.sh
 
 # No AWS credentials, ever: the checks read code only. Without this, an already
 # initialized stack makes `terraform init` load its S3 backend, which on this laptop
@@ -44,41 +23,8 @@ TOOLS=${LINT_TOOLS_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/k3s-gitops-lab/tools}
 export AWS_CONFIG_FILE=/dev/null AWS_SHARED_CREDENTIALS_FILE=/dev/null AWS_EC2_METADATA_DISABLED=true
 unset AWS_PROFILE AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
 
-sha256_of() {
-  if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$1" | cut -d' ' -f1
-  else
-    shasum -a 256 "$1" | cut -d' ' -f1
-  fi
-}
-
-# Download <url> once into the cache, refuse it unless its hash matches, extract <name>.
-fetch() { # <name> <version> <url> <sha256>
-  dir=$TOOLS/$1-$2
-  if [ ! -x "$dir/$1" ]; then
-    mkdir -p "$dir"
-    archive=$dir/${3##*/}
-    curl -fsSL --retry 3 -o "$archive" "$3"
-    actual=$(sha256_of "$archive")
-    if [ "$actual" != "$4" ]; then
-      rm -f "$archive"
-      die "$1 $2: SHA-256 mismatch (expected $4, got $actual); refusing to run it"
-    fi
-    case $archive in
-      *.zip) unzip -oq "$archive" "$1" -d "$dir" ;;
-      *.tar.gz) tar -xzf "$archive" -C "$dir" "$1" ;;
-    esac
-    rm -f "$archive"
-  fi
-  printf '%s\n' "$dir/$1"
-}
-
-TFLINT=$(fetch tflint "$TFLINT_VERSION" \
-  "https://github.com/terraform-linters/tflint/releases/download/v$TFLINT_VERSION/$tflint_asset" \
-  "$tflint_sha256")
-TRIVY=$(fetch trivy "$TRIVY_VERSION" \
-  "https://github.com/aquasecurity/trivy/releases/download/v$TRIVY_VERSION/$trivy_asset" \
-  "$trivy_sha256")
+TFLINT=$(fetch_tool tflint)
+TRIVY=$(fetch_tool trivy)
 
 failed=""
 step() { printf '\n==> %s\n' "$*"; }
