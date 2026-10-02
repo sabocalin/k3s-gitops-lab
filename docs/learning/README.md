@@ -22,6 +22,7 @@ verified, and what surprised us. New notes start from [`_template.md`](_template
 | #20 | [Multi-stage Dockerfile: distroless, non-root, digest-pinned](20-dockerfile.md) | 2 |
 | #21 | [App CI: ruff and pytest on every PR](21-app-ci.md) | 2 |
 | #22 | [Native arm64 image build, pushed to GHCR by git SHA](22-image-build.md) | 2 |
+| #23 | [Image vulnerability scan: fail on fixable HIGH/CRITICAL](23-image-scan.md) | 2 |
 | #57 | [AI code review on pull requests](57-ai-review.md) | 0 |
 | #61 | [`make start / stop / extend / status / up / down`](61-make-lifecycle.md) | 1 |
 | #62 | [Nightly auto-stop (EventBridge Scheduler)](62-nightly-autostop.md) | 1 |
