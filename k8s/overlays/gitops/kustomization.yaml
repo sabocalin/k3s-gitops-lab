@@ -1,0 +1,24 @@
+# #27: the "gitops" deploy path. ArgoCD syncs this overlay from git (#40-42); CI bumps the digest here (#41).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Every object from the base, and the Namespace itself, lands in this namespace.
+namespace: gitops
+
+resources:
+  - namespace.yaml
+  - ../../base
+
+labels:
+  # Not in selectors; also on the pods (includeTemplates). Which delivery path manages
+  # these objects. part-of again here so the Namespace (not from the base) carries it too.
+  - pairs:
+      k3s-gitops-lab/deploy-path: gitops
+      app.kubernetes.io/part-of: k3s-gitops-lab
+    includeSelectors: false
+    includeTemplates: true
+
+# The exact build, by digest: signed by CI (#25). A tag could be moved; a digest cannot.
+images:
+  - name: ghcr.io/sabocalin/k3s-gitops-lab/lab-api
+    digest: sha256:e57c89b448a7b83ed068a556d285ef1e24b7f5b3879efb4491b2facdf7012ccb

@@ -1,0 +1,19 @@
+# #27: skeleton only. Later tasks add to it: replicas and rollout strategy (#28), probes
+# (#29), requests/limits (#30), securityContext (#31).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lab-api
+spec:
+  selector:
+    matchLabels: {} # filled by kustomization.yaml labels (app.kubernetes.io/name)
+  template:
+    spec:
+      containers:
+        - name: lab-api
+          # No tag or digest here: each overlay pins the digest (images:), so the base
+          # never names a specific build.
+          image: ghcr.io/sabocalin/k3s-gitops-lab/lab-api
+          ports:
+            - name: http
+              containerPort: 8000
