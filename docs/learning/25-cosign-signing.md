@@ -62,6 +62,11 @@ verify-image.sh ─▶ cosign verify --certificate-identity <SAN> --certificate-
 | **Negative: tag instead of digest** | `verify: use a digest reference (…@sha256:…), not a tag` (exit 2) |
 | **Negative: image with nothing attached** (pre-#24, `29e42bb5…`) | `no signatures found` (exit 10) |
 | **Negative: image with attestations but no cosign signature** (`b4efe43a…`) | found `slsa.dev/provenance/v1` and `cyclonedx.org/bom`, then `no cosign signature (https://sigstore.dev/cosign/sign/v1) …` (exit 1) |
+| `main` run 37010706686 (merge `d123520`) | pushed `lab-api@sha256:e57c89b448a7b83ed068a556d285ef1e24b7f5b3879efb4491b2facdf7012ccb`; the sign step's own check found `sign/v1`, `cyclonedx.org/bom`, `slsa.dev/provenance/v1` and printed `verified` |
+| **Positive, from the laptop** (empty `DOCKER_CONFIG`: no credentials) | `verified: … signed by …/image.yml@refs/heads/main (issuer https://token.actions.githubusercontent.com)`, exit 0; plain `cosign verify` with that identity and issuer finds the `sign/v1` bundle |
+| **Negative: another workflow** (`app-ci.yml@refs/heads/main`) | exit 1: `expected SAN value ".../app-ci.yml@refs/heads/main", got ".../image.yml@refs/heads/main"` |
+| **Negative: right workflow, another branch** (`@refs/heads/feature`) | exit 1: `expected SAN value ".../image.yml@refs/heads/feature", got ".../image.yml@refs/heads/main"` |
+| **Negative: another issuer** (`accounts.google.com`) | exit 1: `expected issuer value "https://accounts.google.com", got "https://token.actions.githubusercontent.com"` |
 
 ## Gotchas
 - **cosign 3 `verify` passed an image nobody had signed.** The first version of the
