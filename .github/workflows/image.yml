@@ -3,6 +3,7 @@
 #
 #   pull_request  build + vulnerability scan + smoke test; this job cannot write packages
 #   push to main  the same, then push ghcr.io/sabocalin/k3s-gitops-lab/lab-api:<sha>
+#                 with signed build provenance and an SBOM attestation (#24)
 #
 # Plain `docker buildx` (preinstalled on the runner) instead of docker/build-push-action:
 # one less action to trust, and every flag is visible here.
@@ -14,6 +15,7 @@ on:
       - app/**
       - scripts/smoke-image.sh
       - scripts/scan-image.sh
+      - scripts/sbom-image.sh
       - scripts/lib/tools.sh
       - .trivyignore.yaml
       - .github/workflows/image.yml
@@ -23,6 +25,7 @@ on:
       - app/**
       - scripts/smoke-image.sh
       - scripts/scan-image.sh
+      - scripts/sbom-image.sh
       - scripts/lib/tools.sh
       - .trivyignore.yaml
       - .github/workflows/image.yml
@@ -69,6 +72,10 @@ jobs:
       - name: Smoke test
         run: scripts/smoke-image.sh "$IMAGE:$GITHUB_SHA" "$GITHUB_SHA"
 
+      # Generated on PRs too, so a broken SBOM step shows up before merge (not attested).
+      - name: SBOM (CycloneDX)
+        run: scripts/sbom-image.sh "$IMAGE:$GITHUB_SHA" sbom.cdx.json
+
   publish:
     name: image-publish
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
@@ -76,7 +83,9 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-      packages: write # push to ghcr.io/<owner>/...; nothing else
+      packages: write # push the image and its attestations to ghcr.io/<owner>/...
+      id-token: write # OIDC token -> Sigstore (Fulcio) signing certificate for the attestations
+      attestations: write # store the attestations on GitHub
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -105,21 +114,54 @@ jobs:
       - name: Smoke test
         run: scripts/smoke-image.sh "$IMAGE:$GITHUB_SHA" "$GITHUB_SHA"
 
-      - name: Push to GHCR
+      - name: SBOM (CycloneDX)
+        run: scripts/sbom-image.sh "$IMAGE:$GITHUB_SHA" sbom.cdx.json
+
+      - name: Log in to GHCR
         env:
           # The job's short-lived token; --password-stdin keeps it off the command line.
           GHCR_TOKEN: ${{ github.token }}
+        run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+      - name: Push to GHCR
+        id: push
         run: |
-          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           docker push "$IMAGE:$GITHUB_SHA"
-          digest=$(docker image inspect "$IMAGE:$GITHUB_SHA" --format '{{index .RepoDigests 0}}')
-          docker logout ghcr.io
+          ref=$(docker image inspect "$IMAGE:$GITHUB_SHA" --format '{{index .RepoDigests 0}}')
+          echo "digest=${ref#*@}" >> "$GITHUB_OUTPUT"
           {
             echo "### Image pushed"
             echo
             echo "| | |"
             echo "|---|---|"
             echo "| Tag | \`$IMAGE:$GITHUB_SHA\` |"
-            echo "| Digest | \`$digest\` |"
+            echo "| Digest | \`$ref\` |"
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "pushed $digest"
+          echo "pushed $ref"
+
+      # #24: signed statements about the pushed digest, keyless: the job's OIDC identity
+      # gets a short-lived Sigstore certificate naming this workflow; the signature is
+      # recorded in Rekor (public transparency log) and the attestation is stored on GitHub
+      # and pushed next to the image in GHCR. Check with: gh attestation verify oci://...
+      # create-storage-record: off; it needs an extra permission and is for GitHub's
+      # artifact-metadata feature, which this project does not use.
+      - name: Attest build provenance (SLSA)
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+          create-storage-record: false
+
+      - name: Attest SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          sbom-path: sbom.cdx.json
+          push-to-registry: true
+          create-storage-record: false
+
+      - name: Log out of GHCR
+        if: always()
+        run: docker logout ghcr.io
