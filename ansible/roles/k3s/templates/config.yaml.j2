@@ -10,3 +10,10 @@ tls-san:
 write-kubeconfig-mode: "0600"
 # Encrypt Kubernetes Secrets at rest in the datastore (off by default).
 secrets-encryption: true
+# #90: pod/service ranges away from the VPC's 10.42.0.0/16 (see defaults/main.yml).
+cluster-cidr: {{ k3s_cluster_cidr }}
+service-cidr: {{ k3s_service_cidr }}
+cluster-dns: {{ k3s_cluster_dns }}
+# DNS for pods and CoreDNS's upstream (kubelet --resolv-conf): not the node's resolv.conf,
+# which carries the tailnet search domain and the VPC resolver's VPC address.
+resolv-conf: /etc/rancher/k3s/resolv.conf
