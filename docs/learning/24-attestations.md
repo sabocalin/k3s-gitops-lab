@@ -59,12 +59,29 @@ publish job ─ build ─ scan ─ smoke ─ sbom-image.sh (trivy → sbom.cdx.j
 |---|---|
 | SBOM locally (published image, `SCAN_IMAGE_SRC=remote`) | CycloneDX 1.7, 53 components (38 Debian, 14 Python), e.g. `pkg:pypi/fastapi@0.141.1` |
 | PR run 37007341508 | scan, smoke, SBOM step: all pass |
+| `main` run 37008523808 (merge `f80bb55`) | both attest steps: `Attestation uploaded to repository`, `... to registry`; image `lab-api@sha256:b4efe43a438ab456195c453a5f1a6d3ca26d1d466698ce2e114e4b8dcf2ee12c` |
+| **`gh attestation verify` provenance** (`--repo`, `--signer-workflow .../image.yml`) | **rc 0**. Signer `.../image.yml@refs/heads/main`; source `refs/heads/main f80bb556…` (the merge commit); runner `github-hosted`; Rekor entry 3055374965; predicate `https://slsa.dev/provenance/v1` |
+| **`gh attestation verify` SBOM** (`--predicate-type https://cyclonedx.org/bom`) | **rc 0**; 53 components |
+| Registry copy only (`--bundle-from-oci`) | rc 0 |
+| **Negative: image published before #24** (`sha256:29e42bb5…`) | rc 1: `HTTP 404` (no attestation exists) |
+| **Negative: wrong `--repo`** | rc 1: `HTTP 404` |
+| **Negative: wrong `--signer-workflow`** (`app-ci.yml`) | rc 1: `verifying with issuer "sigstore.dev"`; the attestation exists but its certificate names another workflow. This is the cryptographic check |
+| **Negative: an image this repo never built** (`python:3.13-slim`) | rc 1: `HTTP 404` |
 
 ## Gotchas
 - **`create-storage-record` defaults to true** and then needs `artifact-metadata: write`. It
   serves GitHub's artifact metadata feature, which this project does not use, so it is off.
 - **`push-to-registry` needs registry credentials during the attest steps**, so the
   `docker logout` moved after them (with `if: always()`).
+
+- **The AI review called `actions/attest` "nonexistent" (high).** It was wrong: the repo exists
+  (2024-02-20), tag `v4.2.2` is the pinned commit, and since v4 `attest-build-provenance` is a
+  wrapper around it. The model's training data predated the consolidation. Answered on the
+  thread with the evidence; the publish run then used it successfully.
+- **Most negatives are lookups, one is cryptography.** "No attestation" (404) only proves
+  nothing was attested. The wrong-`--signer-workflow` case proves verification rejects a
+  real, valid signature from the wrong identity: that is what stops a different workflow
+  from vouching for an image.
 
 ## Further reading
 - [GitHub artifact attestations](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds)
