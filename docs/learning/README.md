@@ -25,6 +25,7 @@ verified, and what surprised us. New notes start from [`_template.md`](_template
 | #23 | [Image vulnerability scan: fail on fixable HIGH/CRITICAL](23-image-scan.md) | 2 |
 | #24 | [SBOM and build provenance attestations](24-attestations.md) | 2 |
 | #25 | [Keyless cosign signing](25-cosign-signing.md) | 2 |
+| #27 | [Kustomize base and overlays: push and gitops namespaces](27-kustomize-layout.md) | 3 |
 | #57 | [AI code review on pull requests](57-ai-review.md) | 0 |
 | #61 | [`make start / stop / extend / status / up / down`](61-make-lifecycle.md) | 1 |
 | #62 | [Nightly auto-stop (EventBridge Scheduler)](62-nightly-autostop.md) | 1 |
