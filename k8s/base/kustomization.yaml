@@ -1,0 +1,21 @@
+# #27: what the app IS, identical in every namespace. Overlays (k8s/overlays/*) add
+# WHERE it runs: namespace, deploy-path label, image digest.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - deployment.yaml
+  - service.yaml
+
+labels:
+  # Also written into selectors (Deployment matchLabels, Service selector). Selectors are
+  # immutable after creation, so only this one stable label goes there.
+  - pairs:
+      app.kubernetes.io/name: lab-api
+    includeSelectors: true
+  # Not in selectors, so changing these later never touches one. includeTemplates: also on
+  # the pods, where NetworkPolicy (#33) and metrics select by label.
+  - pairs:
+      app.kubernetes.io/part-of: k3s-gitops-lab
+    includeSelectors: false
+    includeTemplates: true

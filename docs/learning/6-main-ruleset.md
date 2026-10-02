@@ -45,7 +45,7 @@ Ruleset `main` (id `23989149`), enforcement **Active**, bypass list **empty**
 | Require a pull request, **0 approvals** | GitHub does not let you approve your own PR, so requiring 1 approval would block every merge on a solo repo. |
 | Require conversation resolution | Open review comments block the merge until resolved. |
 | Allowed merge method: squash | One commit per PR on `main`. |
-| Require status checks: `zizmor`, `terraform-lint`, `ruff`, `pytest` (GitHub Actions app, id `15368`) | `zizmor` added in #4: the workflow security audit must pass before merging. `terraform-lint` added in #17: fmt, validate, tflint, trivy. `ruff` and `pytest` added in #21: the app's lint and tests. |
+| Require status checks: `zizmor`, `terraform-lint`, `ruff`, `pytest`, `k8s-render` (GitHub Actions app, id `15368`) | `zizmor` added in #4: the workflow security audit must pass before merging. `terraform-lint` added in #17: fmt, validate, tflint, trivy. `ruff` and `pytest` added in #21: the app's lint and tests. `k8s-render` added in #27: the Kustomize overlays render and keep their invariants. |
 
 Repository settings changed alongside:
 - Only squash merging allowed (merge commits and rebase merging off).

@@ -10,7 +10,7 @@ export AWS_PROFILE AWS_REGION
 LEASE_MINUTES ?= 180
 export LEASE_MINUTES
 
-.PHONY: help start stop extend status plan up down kubeconfig lint test run image
+.PHONY: help start stop extend status plan up down kubeconfig lint test run image k8s
 
 help:
 	@echo 'make start       start the node, stop it again in $$LEASE_MINUTES min (default 180)'
@@ -25,6 +25,7 @@ help:
 	@echo 'make test        app: ruff check, ruff format --check, pytest'
 	@echo 'make run         app: serve on http://localhost:8000 (reload on change)'
 	@echo 'make image       app: build the container image lab-api:dev (linux/arm64)'
+	@echo 'make k8s         render the Kustomize overlays and check them (same as CI)'
 
 start stop extend status plan up down kubeconfig:
 	@scripts/lab.sh $@
@@ -40,3 +41,6 @@ run:
 
 image:
 	@docker build --platform linux/arm64 -t lab-api:dev app
+
+k8s:
+	@scripts/render-k8s.sh
