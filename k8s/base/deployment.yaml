@@ -1,14 +1,30 @@
-# #27: skeleton only. Later tasks add to it: replicas and rollout strategy (#28), probes
-# (#29), requests/limits (#30), securityContext (#31).
+# The app's Deployment. #28: replicas and rollout. Later tasks add liveness and startup
+# probes (#29), requests/limits (#30), securityContext (#31).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: lab-api
 spec:
+  # #28: three replicas on one node. Not for node failure (there is one node), but so a
+  # rollout or a crashed pod never leaves zero pods serving.
+  replicas: 3
+  # Keep 5 old ReplicaSets for `kubectl rollout undo` (the default is 10).
+  revisionHistoryLimit: 5
+  # Mark the rollout failed if it makes no progress in 2 minutes (default 10).
+  progressDeadlineSeconds: 120
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # Never go below 3 ready pods: an old pod is removed only after a new one is READY.
+      maxUnavailable: 0
+      # One extra pod at a time (4 during a rollout), so memory on the 2 GiB node stays bounded.
+      maxSurge: 1
   selector:
     matchLabels: {} # filled by kustomization.yaml labels (app.kubernetes.io/name)
   template:
     spec:
+      # SIGTERM → wait at most this long for the pod to exit (preStop counts towards it).
+      terminationGracePeriodSeconds: 30
       containers:
         - name: lab-api
           # No tag or digest here: each overlay pins the digest (images:), so the base
@@ -17,3 +33,20 @@ spec:
           ports:
             - name: http
               containerPort: 8000
+          # #28: without it a pod counts as ready as soon as its process starts, before
+          # uvicorn listens and during warm-up, and maxUnavailable: 0 protects nothing.
+          # /ready is 503 until startup work finishes (#19). #29 adds liveness/startup.
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            periodSeconds: 2
+            failureThreshold: 1
+          lifecycle:
+            # On removal, "drop from Service endpoints" and "send SIGTERM" happen at the same
+            # time; routers learn of the first a moment later. Sleeping 5 s before SIGTERM
+            # keeps the old pod serving until no one routes to it. A built-in sleep action:
+            # distroless has no `sleep` binary.
+            preStop:
+              sleep:
+                seconds: 5
