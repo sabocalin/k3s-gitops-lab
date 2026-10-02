@@ -1,0 +1,72 @@
+# #21: the app's checks on every PR: ruff (lint + format) and pytest, as two jobs so a
+# lint failure never hides test results. Both are required status checks on main.
+# Runs on every PR, not only ones touching app/, because required checks that never
+# report block the merge.
+name: app-ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Deny everything at workflow level; each job asks for exactly what it needs.
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: app
+
+env:
+  # Exact uv build: setup-uv refuses the download unless it matches this SHA-256
+  # (uv-x86_64-unknown-linux-gnu.tar.gz from the 0.12.8 release; also attested by
+  # astral-sh/uv's release workflow). Bump version and hash together, by hand.
+  UV_VERSION: "0.12.8"
+  UV_SHA256: 2e2b37e9811e17675a9e70bed5e1a58fc8c0388be63d751d72cc735188c149ff
+
+jobs:
+  ruff:
+    name: ruff
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          checksum: ${{ env.UV_SHA256 }}
+          enable-cache: false # a few small wheels; no cache to poison or restore
+
+      # --locked: fail if pyproject.toml and uv.lock disagree (a forgotten `uv lock`).
+      - run: uv sync --locked
+      - run: uv run --frozen ruff check --output-format=github .
+      - run: uv run --frozen ruff format --check --diff .
+
+  pytest:
+    name: pytest
+    runs-on: ubuntu-24.04
+    # A hung test (see docs/learning/19) fails after 10 minutes instead of the 6-hour default.
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          checksum: ${{ env.UV_SHA256 }}
+          enable-cache: false
+
+      - run: uv sync --locked
+      - run: uv run --frozen pytest
