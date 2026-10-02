@@ -1,0 +1,111 @@
+# #22: build the app image natively on arm64 (the node is a Graviton t4g) and, on main,
+# push it to GHCR tagged with the full git SHA. Never a :latest tag.
+#
+#   pull_request  build + smoke test only; this job cannot write packages
+#   push to main  build + smoke test, then push ghcr.io/sabocalin/k3s-gitops-lab/lab-api:<sha>
+#
+# Plain `docker buildx` (preinstalled on the runner) instead of docker/build-push-action:
+# one less action to trust, and every flag is visible here.
+name: image
+
+on:
+  pull_request:
+    paths:
+      - app/**
+      - scripts/smoke-image.sh
+      - .github/workflows/image.yml
+  push:
+    branches: [main]
+    paths:
+      - app/**
+      - scripts/smoke-image.sh
+      - .github/workflows/image.yml
+  workflow_dispatch:
+
+# Deny everything at workflow level; each job asks for exactly what it needs.
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Cancel superseded PR builds; never cancel a push to the registry halfway on main.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  IMAGE: ghcr.io/sabocalin/k3s-gitops-lab/lab-api
+
+jobs:
+  build:
+    name: image-build
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build (linux/arm64, not pushed)
+        run: |
+          docker buildx build app \
+            --platform linux/arm64 \
+            --provenance=false --sbom=false \
+            --build-arg APP_VERSION="$GITHUB_SHA" \
+            --label org.opencontainers.image.source="https://github.com/$GITHUB_REPOSITORY" \
+            --label org.opencontainers.image.revision="$GITHUB_SHA" \
+            --tag "$IMAGE:$GITHUB_SHA" \
+            --load
+
+      - name: Smoke test
+        run: scripts/smoke-image.sh "$IMAGE:$GITHUB_SHA" "$GITHUB_SHA"
+
+  publish:
+    name: image-publish
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write # push to ghcr.io/<owner>/...; nothing else
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # --provenance/--sbom off: buildx would otherwise wrap the image in an index with an
+      # extra "unknown/unknown" entry. Provenance and SBOM come as GitHub attestations (#24).
+      # The source label links the package to this repository on GitHub.
+      - name: Build (linux/arm64)
+        run: |
+          docker buildx build app \
+            --platform linux/arm64 \
+            --provenance=false --sbom=false \
+            --build-arg APP_VERSION="$GITHUB_SHA" \
+            --label org.opencontainers.image.source="https://github.com/$GITHUB_REPOSITORY" \
+            --label org.opencontainers.image.revision="$GITHUB_SHA" \
+            --tag "$IMAGE:$GITHUB_SHA" \
+            --load
+
+      # Nothing is pushed unless the image works from the outside.
+      - name: Smoke test
+        run: scripts/smoke-image.sh "$IMAGE:$GITHUB_SHA" "$GITHUB_SHA"
+
+      - name: Push to GHCR
+        env:
+          # The job's short-lived token; --password-stdin keeps it off the command line.
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker push "$IMAGE:$GITHUB_SHA"
+          digest=$(docker image inspect "$IMAGE:$GITHUB_SHA" --format '{{index .RepoDigests 0}}')
+          docker logout ghcr.io
+          {
+            echo "### Image pushed"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Tag | \`$IMAGE:$GITHUB_SHA\` |"
+            echo "| Digest | \`$digest\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "pushed $digest"

@@ -32,7 +32,10 @@ FROM gcr.io/distroless/python3-debian13:nonroot@sha256:774595d652a294b54c9bd575b
 # modify its own code. Precompiled bytecode means nothing needs writing at runtime, so the
 # container also runs with a read-only root filesystem.
 COPY --from=build /app /app
-ENV PYTHONPATH=/app/deps:/app \
+# The commit this image was built from (CI passes the git SHA; `/` reports it).
+ARG APP_VERSION=dev
+ENV APP_VERSION=${APP_VERSION} \
+    PYTHONPATH=/app/deps:/app \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 USER 65532:65532
