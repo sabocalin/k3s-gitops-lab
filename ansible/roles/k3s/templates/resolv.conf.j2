@@ -1,0 +1,3 @@
+# Managed by Ansible (k3s-gitops-lab, #90). Pod DNS upstream (kubelet --resolv-conf):
+# CoreDNS forwards here; pods get the cluster search domains only.
+nameserver {{ k3s_upstream_dns }}

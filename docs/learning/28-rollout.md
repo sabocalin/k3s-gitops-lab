@@ -78,7 +78,7 @@ Traefik's Ingress in #35, where a separate router learns of endpoint changes lat
   work when looked up short (`lab-api`) or absolute (`…cluster.local.`). Without the trailing
   dot, the FQDN has fewer than `ndots:5` dots, so the search list is tried first, including
   `taild18d72.ts.net` (inherited from the node's Tailscale DNS); that query goes upstream and
-  hangs. Tracked as a separate fix; it blocks cert-manager (#36), ArgoCD and Alloy.
+  hangs. Fixed in #90 ([note](90-cluster-network-ranges.md)); the rollout test repeated on the new network: 0/850 failed.
 - **A trial run during boot is not evidence.** The first 5-second trial failed while Traefik
   and its load-balancer pod were still starting. The second trial failed too, and that one was
   the DNS bug above. Diagnose before reading results.
