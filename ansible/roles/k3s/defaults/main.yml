@@ -2,3 +2,14 @@
 k3s_version: v1.36.4+k3s1
 k3s_node_name: k3s-node
 k3s_release_url: "https://github.com/k3s-io/k3s/releases/download/{{ k3s_version | urlencode }}"
+
+# #90: pod and service ranges. K3s's defaults (10.42.0.0/16, 10.43.0.0/16) overlapped the
+# VPC (10.42.0.0/16): CoreDNS's upstream, the VPC resolver 10.42.0.2, landed in the pod subnet
+# and every external lookup timed out. The guard task refuses any overlap with the VPC.
+# Changing these needs a fresh cluster (make down, make up).
+k3s_cluster_cidr: 10.52.0.0/16
+k3s_service_cidr: 10.53.0.0/16
+k3s_cluster_dns: 10.53.0.10 # inside k3s_service_cidr
+# Upstream DNS for CoreDNS and pods: Amazon's resolver at its link-local address, the same
+# whatever the VPC's range. No search domains, so pods stop inheriting the node's tailnet one.
+k3s_upstream_dns: 169.254.169.253

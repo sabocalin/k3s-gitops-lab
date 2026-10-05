@@ -27,6 +27,7 @@ verified, and what surprised us. New notes start from [`_template.md`](_template
 | #25 | [Keyless cosign signing](25-cosign-signing.md) | 2 |
 | #27 | [Kustomize base and overlays: push and gitops namespaces](27-kustomize-layout.md) | 3 |
 | #28 | [Deployment: 3 replicas, zero-downtime rolling updates](28-rollout.md) | 3 |
+| #90 | [K3s pod network off the VPC range; pod DNS fixed](90-cluster-network-ranges.md) | 1 |
 | #57 | [AI code review on pull requests](57-ai-review.md) | 0 |
 | #61 | [`make start / stop / extend / status / up / down`](61-make-lifecycle.md) | 1 |
 | #62 | [Nightly auto-stop (EventBridge Scheduler)](62-nightly-autostop.md) | 1 |

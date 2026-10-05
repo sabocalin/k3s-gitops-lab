@@ -19,6 +19,7 @@ GitHub Actions ──OIDC──▶ AWS (no stored keys)
 GitHub Actions ──Tailscale──▶ Kubernetes API (push deploys)
 ```
 
+- Address ranges: VPC `10.42.0.0/16`, pods `10.52.0.0/16`, Services `10.53.0.0/16`. They must not overlap; an Ansible guard checks this (#90).
 - Infrastructure: Terraform (S3 backend) + Ansible installs K3s. Three stacks, each with
   its own state in the bootstrap bucket:
 

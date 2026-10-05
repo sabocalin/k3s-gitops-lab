@@ -4,6 +4,41 @@
     fail_msg: "expected aarch64, got {{ ansible_facts.architecture }}"
     quiet: true
 
+# #90: fail closed. The VPC's ranges come from the instance metadata service (IMDSv2), so
+# the check needs no assumption about the network; an overlap stops the play before K3s
+# is configured.
+- name: Pod and service ranges must not overlap the VPC
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import ipaddress, sys, urllib.request
+        base = "http://169.254.169.254/latest"
+        def get(path, token=None, method="GET", headers=None):
+            req = urllib.request.Request(base + path, method=method, headers=headers or {})
+            if token:
+                req.add_header("X-aws-ec2-metadata-token", token)
+            with urllib.request.urlopen(req, timeout=3) as r:
+                return r.read().decode()
+        token = get("/api/token", method="PUT",
+                    headers={"X-aws-ec2-metadata-token-ttl-seconds": "60"})
+        mac = get("/meta-data/mac", token)
+        vpc = [ipaddress.ip_network(c) for c in
+               get(f"/meta-data/network/interfaces/macs/{mac}/vpc-ipv4-cidr-blocks", token).split()]
+        bad = [f"{name} {net} overlaps VPC {v}"
+               for name, net in (("pods", ipaddress.ip_network(sys.argv[1])),
+                                 ("services", ipaddress.ip_network(sys.argv[2])))
+               for v in vpc if net.overlaps(v)]
+        if bad:
+            sys.exit("; ".join(bad))
+        print("no overlap with VPC " + ", ".join(map(str, vpc)))
+      - "{{ k3s_cluster_cidr }}"
+      - "{{ k3s_service_cidr }}"
+  register: cidr_check
+  changed_when: false
+  check_mode: false
+
 - name: Read this node's Tailscale identity (for the API certificate)
   ansible.builtin.command: tailscale status --json --self
   register: ts_status
@@ -43,6 +78,15 @@
     owner: root
     group: root
     mode: "0600"
+  notify: Restart k3s
+
+- name: K3s pod DNS upstream (#90)
+  ansible.builtin.template:
+    src: resolv.conf.j2
+    dest: /etc/rancher/k3s/resolv.conf
+    owner: root
+    group: root
+    mode: "0644"
   notify: Restart k3s
 
 - name: K3s systemd unit
