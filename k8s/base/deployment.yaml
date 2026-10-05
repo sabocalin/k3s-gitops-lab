@@ -1,5 +1,5 @@
-# The app's Deployment. #28: replicas and rollout. Later tasks add liveness and startup
-# probes (#29), requests/limits (#30), securityContext (#31).
+# The app's Deployment. #28: replicas and rollout. #29: probes. Later tasks add
+# requests/limits (#30), securityContext (#31).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -33,15 +33,38 @@ spec:
           ports:
             - name: http
               containerPort: 8000
-          # #28: without it a pod counts as ready as soon as its process starts, before
-          # uvicorn listens and during warm-up, and maxUnavailable: 0 protects nothing.
-          # /ready is 503 until startup work finishes (#19). #29 adds liveness/startup.
+          # #29: three questions, three probes. Liveness and startup ask /health (is the
+          # process alive?); readiness asks /ready (should it get traffic?). Liveness must
+          # never depend on readiness: a busy or draining pod would be killed for it.
+          #
+          # startup: "has it finished starting?" Until it passes, liveness and readiness are
+          # not run, so a slow start is never mistaken for a hang. Up to 30 x 2 s = 60 s.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+            timeoutSeconds: 1
+          # liveness: "is it stuck?" On failure: RESTART. Deliberately slow to fire:
+          # 3 misses x 10 s, so a GC pause or a burst never causes a restart.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+            timeoutSeconds: 2
+          # readiness (#28): "send it traffic?" On failure: out of the Service endpoints,
+          # NO restart. Fast both ways (2 s): it gates every rollout and drain.
+          # /ready is 503 while starting, draining (SIGUSR1) or shutting down.
           readinessProbe:
             httpGet:
               path: /ready
               port: http
             periodSeconds: 2
             failureThreshold: 1
+            timeoutSeconds: 1
           lifecycle:
             # On removal, "drop from Service endpoints" and "send SIGTERM" happen at the same
             # time; routers learn of the first a moment later. Sleeping 5 s before SIGTERM

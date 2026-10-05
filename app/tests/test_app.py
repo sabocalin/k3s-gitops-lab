@@ -109,3 +109,40 @@ def test_root_reports_version_and_pod(ready_client, monkeypatch):
     assert body["service"] == "k3s-gitops-lab"
     assert body["version"] == "abc1234"
     assert body["pod"]
+
+
+def test_draining_fails_readiness_but_not_liveness(ready_client):
+    # #29: the contract the probes rely on. Readiness says "send me traffic?", liveness
+    # says "restart me?"; draining must flip the first and never the second.
+    app = ready_client.app
+    app.state.toggle_drain()
+    ready = ready_client.get("/ready")
+    assert ready.status_code == 503
+    assert ready.json() == {"status": "draining"}
+    assert ready_client.get("/health").status_code == 200
+
+    app.state.toggle_drain()  # toggle back
+    assert ready_client.get("/ready").json() == {"status": "ready"}
+
+
+def test_starting_wins_over_draining():
+    # A pod still starting reports "starting" even if someone already asked it to drain.
+    gate = threading.Event()
+    app = create_app(gated_startup(gate))
+    with TestClient(app) as client:
+        app.state.toggle_drain()
+        assert client.get("/ready").json() == {"status": "starting"}
+        gate.set()
+        wait_until_status(client, 503)
+        assert client.get("/ready").json() == {"status": "draining"}
+
+
+def wait_until_status(client: TestClient, code: int, timeout: float = 5.0) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        body = client.get("/ready").json()
+        if body["status"] != "starting":
+            assert client.get("/ready").status_code == code
+            return
+        time.sleep(0.01)
+    pytest.fail("startup never finished")
