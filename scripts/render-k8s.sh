@@ -55,6 +55,18 @@ for dir in k8s/overlays/*/; do
      | .name')
   [ -z "$unbounded" ] || problem "$name: containers without cpu/memory requests and limits: $unbounded"
 
+  # #31: hardened pods: non-root, read-only root FS, no privilege escalation, all caps dropped.
+  unhardened=$(echo "$objects" | jq -r \
+    'select(.spec.template.spec?) | .spec.template.spec as $p | $p.containers[]
+     | select(($p.securityContext.runAsNonRoot != true)
+              or (.securityContext.readOnlyRootFilesystem != true)
+              or (.securityContext.allowPrivilegeEscalation != false)
+              or ((.securityContext.capabilities.drop // []) | index("ALL") | not))
+     | .name')
+  [ -z "$unhardened" ] || problem "$name: containers missing the #31 securityContext: $unhardened"
+  psa=$(echo "$objects" | jq -r 'select(.kind == "Namespace") | .metadata.labels["pod-security.kubernetes.io/enforce"] // "none"')
+  [ "$psa" = restricted ] || problem "$name: namespace does not enforce Pod Security 'restricted' (got '$psa')"
+
   for kind in LimitRange ResourceQuota; do
     count=$(echo "$objects" | jq -r --arg k "$kind" 'select(.kind == $k) | .metadata.name' | wc -l | tr -d ' ')
     [ "$count" = 1 ] || problem "$name: expected exactly one $kind, found $count"

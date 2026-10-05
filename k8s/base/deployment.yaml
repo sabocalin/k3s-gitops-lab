@@ -1,5 +1,5 @@
-# The app's Deployment. #28: replicas and rollout. #29: probes. #30: resources. Later
-# tasks add securityContext (#31).
+# The app's Deployment. #28: replicas and rollout. #29: probes. #30: resources.
+# #31: securityContext (the namespace also enforces Pod Security "restricted").
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -25,11 +25,25 @@ spec:
     spec:
       # SIGTERM → wait at most this long for the pod to exit (preStop counts towards it).
       terminationGracePeriodSeconds: 30
+      # #31: the app never calls the Kubernetes API, so it gets no token to steal.
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true # refuse to start if the image would run as root
+        runAsUser: 65532 # the image's nonroot user (#20), stated here too
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault # the container runtime's syscall filter
       containers:
         - name: lab-api
           # No tag or digest here: each overlay pins the digest (images:), so the base
           # never names a specific build.
           image: ghcr.io/sabocalin/k3s-gitops-lab/lab-api
+          # #31: nothing to write (bytecode is precompiled, #20), no privileges to gain.
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false # no setuid/setcap binaries can raise privileges
+            capabilities:
+              drop: ["ALL"] # port 8000 > 1024: not even NET_BIND_SERVICE is needed
           ports:
             - name: http
               containerPort: 8000

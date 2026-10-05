@@ -2,3 +2,11 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: push
+  labels:
+    # #31: Pod Security Admission rejects any pod here that does not meet the "restricted"
+    # standard (non-root, no privilege escalation, all capabilities dropped, seccomp).
+    # Pinned to the cluster's version so a K3s upgrade cannot change the rules silently.
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: v1.36
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: v1.36
