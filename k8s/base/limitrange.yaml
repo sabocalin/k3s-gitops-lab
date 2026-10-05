@@ -1,0 +1,19 @@
+# #30: per-namespace container defaults and ceiling. A container that declares no
+# resources gets these (so the ResourceQuota can always count it); none may ask for more
+# than `max`. Values follow measured usage: idle 3m / 37Mi, about 75m at load, memory flat.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: container-defaults
+spec:
+  limits:
+    - type: Container
+      defaultRequest: # requests when none are set
+        cpu: 50m
+        memory: 64Mi
+      default: # limits when none are set
+        cpu: 250m
+        memory: 128Mi
+      max: # no single container may claim a quarter of the 2 GiB node
+        cpu: 500m
+        memory: 256Mi

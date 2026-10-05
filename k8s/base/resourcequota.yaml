@@ -1,0 +1,15 @@
+# #30: per-namespace budget. A pod that would push the namespace over it is rejected at
+# creation (Forbidden: exceeded quota), so neither deploy path (push, gitops) nor a runaway
+# autoscaler (#34) can starve the other or K3s. Sized for: HPA max 5 + 1 surge = 6 app pods
+# (6 x 50m/64Mi requests, 6 x 250m/128Mi limits) plus 2 helper pods at LimitRange defaults.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: namespace-budget
+spec:
+  hard:
+    pods: "8"
+    requests.cpu: 400m
+    requests.memory: 512Mi
+    limits.cpu: "2"
+    limits.memory: 1Gi

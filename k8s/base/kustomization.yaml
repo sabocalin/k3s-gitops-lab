@@ -6,6 +6,8 @@ kind: Kustomization
 resources:
   - deployment.yaml
   - service.yaml
+  - limitrange.yaml # #30
+  - resourcequota.yaml # #30
 
 labels:
   # Also written into selectors (Deployment matchLabels, Service selector). Selectors are
