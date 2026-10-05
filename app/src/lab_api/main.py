@@ -1,7 +1,8 @@
 """The k3s-gitops-lab demo service (#19).
 
 /health   liveness: the process is up and serving. Always 200.
-/ready    readiness: 503 until startup work has finished, and again while shutting down.
+/ready    readiness: 503 until startup work has finished, while draining, and while
+          shutting down.
 /metrics  Prometheus metrics: HTTP requests by route and status, latency, process stats.
 /         which version and which pod answered (useful with several replicas).
 
@@ -9,10 +10,17 @@ Startup work runs as a background task started from the lifespan hook. uvicorn a
 no connections until the lifespan startup returns, so work done *inside* it could never
 be observed as "not ready". As a task, the server answers /health at once while /ready
 stays 503 until the work completes.
+
+Draining (#29): SIGUSR1 toggles it. A draining pod answers /ready with 503, so Kubernetes
+removes it from the Service, while /health stays 200, so it is NOT restarted. Use it to take
+one pod out of traffic by hand (and to prove that readiness and liveness are separate):
+    kubectl exec <pod> -- python3 -c "import os,signal; os.kill(1, signal.SIGUSR1)"
+A signal rather than an HTTP endpoint: only someone allowed to `kubectl exec` can send it.
 """
 
 import asyncio
 import os
+import signal
 import socket
 import time
 from collections.abc import Awaitable, Callable
@@ -59,6 +67,9 @@ def create_app(startup: Startup = default_startup) -> FastAPI:
         registry=registry,
     )
 
+    def toggle_drain() -> None:
+        app.state.draining = not app.state.draining
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         app.state.ready = False
@@ -68,6 +79,13 @@ def create_app(startup: Startup = default_startup) -> FastAPI:
             app.state.ready = True
 
         task = asyncio.create_task(warm_up())
+        loop = asyncio.get_running_loop()
+        try:
+            loop.add_signal_handler(signal.SIGUSR1, toggle_drain)
+        except (NotImplementedError, RuntimeError, ValueError):
+            # Signal handlers need the main thread of the main interpreter; tests run the
+            # app in a worker thread and call app.state.toggle_drain() directly instead.
+            pass
         yield
         # Shutting down: report not ready first, so a load balancer stops sending traffic.
         app.state.ready = False
@@ -75,6 +93,8 @@ def create_app(startup: Startup = default_startup) -> FastAPI:
 
     app = FastAPI(title="k3s-gitops-lab", lifespan=lifespan)
     app.state.ready = False
+    app.state.draining = False
+    app.state.toggle_drain = toggle_drain
 
     @app.middleware("http")
     async def record_metrics(request: Request, call_next):
@@ -94,9 +114,11 @@ def create_app(startup: Startup = default_startup) -> FastAPI:
 
     @app.get("/ready")
     async def ready() -> JSONResponse:
-        if app.state.ready:
-            return JSONResponse({"status": "ready"})
-        return JSONResponse({"status": "starting"}, status_code=503)
+        if not app.state.ready:
+            return JSONResponse({"status": "starting"}, status_code=503)
+        if app.state.draining:
+            return JSONResponse({"status": "draining"}, status_code=503)
+        return JSONResponse({"status": "ready"})
 
     @app.get("/metrics")
     async def metrics() -> Response:
