@@ -7,7 +7,9 @@
 # Per overlay <name>: exactly one Namespace, named <name>; every other object in that
 # namespace (so nothing else cluster-scoped); every container image pinned by digest; pods
 # labelled k3s-gitops-lab/deploy-path=<name>; every container with cpu/memory requests and
-# limits; exactly one LimitRange and one ResourceQuota (#30). Across overlays: no shared namespace.
+# limits; exactly one LimitRange and one ResourceQuota (#30); exactly one PodDisruptionBudget
+# that selects the Deployment's pods and still allows an eviction (#32). Across overlays: no
+# shared namespace.
 # Needs yq (mikefarah, v4) and jq.
 set -eu
 
@@ -71,6 +73,19 @@ for dir in k8s/overlays/*/; do
     count=$(echo "$objects" | jq -r --arg k "$kind" 'select(.kind == $k) | .metadata.name' | wc -l | tr -d ' ')
     [ "$count" = 1 ] || problem "$name: expected exactly one $kind, found $count"
   done
+
+  # #32: one PDB, selecting exactly the Deployment's pods, with minAvailable below replicas.
+  # minAvailable >= replicas allows zero evictions: every drain would hang forever.
+  pdb=$(echo "$objects" | jq -rs '
+    ([.[] | select(.kind == "PodDisruptionBudget")]) as $b
+    | ([.[] | select(.kind == "Deployment")][0]) as $d
+    | if ($b | length) != 1 then "expected exactly one PodDisruptionBudget, found \($b | length)"
+      elif $b[0].spec.selector.matchLabels != $d.spec.selector.matchLabels then
+        "PodDisruptionBudget selector \($b[0].spec.selector.matchLabels) != Deployment selector \($d.spec.selector.matchLabels)"
+      elif ($b[0].spec.minAvailable | type) != "number" or $b[0].spec.minAvailable >= $d.spec.replicas then
+        "PodDisruptionBudget minAvailable \($b[0].spec.minAvailable) must be a number below replicas (\($d.spec.replicas))"
+      else empty end')
+  [ -z "$pdb" ] || problem "$name: $pdb"
 
   unlabelled=$(echo "$objects" | jq -r --arg ns "$name" \
     'select(.spec.template.metadata?) | select(.spec.template.metadata.labels["k3s-gitops-lab/deploy-path"] != $ns) | "\(.kind)/\(.metadata.name)"')

@@ -1,0 +1,18 @@
+# #32: voluntary disruptions (kubectl drain, node upgrades) go through the Eviction API,
+# which refuses (HTTP 429) any eviction that would leave fewer than 2 ready lab-api pods.
+# Rollouts are NOT covered: the Deployment's own maxUnavailable: 0 (#28) handles those.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: lab-api
+spec:
+  # Of 3 replicas, 1 may be down at a time. Never equal to replicas: that budget allows
+  # zero evictions and blocks every drain forever, even with spare nodes.
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: lab-api
+  # Default IfHealthyBudget: a pod that is running but NOT ready may only be evicted while
+  # the budget is met. So two broken pods would also pin themselves and block every drain.
+  # AlwaysAllow: unready pods can always go, since evicting them costs no availability.
+  unhealthyPodEvictionPolicy: AlwaysAllow
