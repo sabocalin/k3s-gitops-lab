@@ -6,7 +6,8 @@
 #
 # Per overlay <name>: exactly one Namespace, named <name>; every other object in that
 # namespace (so nothing else cluster-scoped); every container image pinned by digest; pods
-# labelled k3s-gitops-lab/deploy-path=<name>. Across overlays: no shared namespace.
+# labelled k3s-gitops-lab/deploy-path=<name>; every container with cpu/memory requests and
+# limits; exactly one LimitRange and one ResourceQuota (#30). Across overlays: no shared namespace.
 # Needs yq (mikefarah, v4) and jq.
 set -eu
 
@@ -45,6 +46,19 @@ for dir in k8s/overlays/*/; do
   unpinned=$(echo "$objects" | jq -r \
     '.. | objects | select(has("containers")) | .containers[] | select(.image | test("@sha256:[0-9a-f]{64}$") | not) | .image')
   [ -z "$unpinned" ] || problem "$name: images not pinned by digest: $unpinned"
+
+  # #30: every container declares requests and limits for CPU and memory (the quota
+  # counts them; a missing limit would make the node's memory unbounded).
+  unbounded=$(echo "$objects" | jq -r \
+    '.. | objects | select(has("containers")) | .containers[]
+     | select([.resources.requests.cpu, .resources.requests.memory, .resources.limits.cpu, .resources.limits.memory] | any(. == null))
+     | .name')
+  [ -z "$unbounded" ] || problem "$name: containers without cpu/memory requests and limits: $unbounded"
+
+  for kind in LimitRange ResourceQuota; do
+    count=$(echo "$objects" | jq -r --arg k "$kind" 'select(.kind == $k) | .metadata.name' | wc -l | tr -d ' ')
+    [ "$count" = 1 ] || problem "$name: expected exactly one $kind, found $count"
+  done
 
   unlabelled=$(echo "$objects" | jq -r --arg ns "$name" \
     'select(.spec.template.metadata?) | select(.spec.template.metadata.labels["k3s-gitops-lab/deploy-path"] != $ns) | "\(.kind)/\(.metadata.name)"')

@@ -1,5 +1,5 @@
-# The app's Deployment. #28: replicas and rollout. #29: probes. Later tasks add
-# requests/limits (#30), securityContext (#31).
+# The app's Deployment. #28: replicas and rollout. #29: probes. #30: resources. Later
+# tasks add securityContext (#31).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -33,6 +33,17 @@ spec:
           ports:
             - name: http
               containerPort: 8000
+          # #30: measured idle 3m CPU / 37Mi, about 75m at 158 req/s over 3 pods, memory flat.
+          # requests: what the scheduler reserves, and the base HPA (#34) measures CPU against.
+          # limits: memory over 128Mi is OOM-killed (protects the 2 GiB node); CPU over 250m is
+          # throttled, not killed.
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
           # #29: three questions, three probes. Liveness and startup ask /health (is the
           # process alive?); readiness asks /ready (should it get traffic?). Liveness must
           # never depend on readiness: a busy or draining pod would be killed for it.

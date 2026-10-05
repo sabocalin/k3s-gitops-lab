@@ -29,6 +29,7 @@ verified, and what surprised us. New notes start from [`_template.md`](_template
 | #28 | [Deployment: 3 replicas, zero-downtime rolling updates](28-rollout.md) | 3 |
 | #90 | [K3s pod network off the VPC range; pod DNS fixed](90-cluster-network-ranges.md) | 1 |
 | #29 | [Liveness, readiness and startup probes](29-probes.md) | 3 |
+| #30 | [Requests, limits, LimitRange and ResourceQuota](30-resources.md) | 3 |
 | #57 | [AI code review on pull requests](57-ai-review.md) | 0 |
 | #61 | [`make start / stop / extend / status / up / down`](61-make-lifecycle.md) | 1 |
 | #62 | [Nightly auto-stop (EventBridge Scheduler)](62-nightly-autostop.md) | 1 |
