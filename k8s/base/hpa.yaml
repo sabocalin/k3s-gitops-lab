@@ -1,0 +1,34 @@
+# #34: scale lab-api between 3 and 5 pods on CPU. Every 15 s the HPA controller reads pod
+# CPU from metrics-server (built into K3s) and sets the Deployment's replicas to
+#   ceil(current replicas × current utilization / target utilization)
+# within [minReplicas, maxReplicas]. Utilization is a percentage of the pod's CPU REQUEST
+# (50m, #30), so without requests there is nothing to compute.
+#
+# The Deployment no longer sets spec.replicas: the HPA owns it. A replicas: line in the
+# manifest would reset the HPA's choice on every kubectl apply (and ArgoCD would fight it).
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: lab-api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: lab-api
+  # Never below 3: one pod down for a rollout or a drain still leaves 2 (the PDB, #32).
+  minReplicas: 3
+  # 5 × 128Mi limits fits the 2 GiB node and the namespace quota, with a rollout's surge pod.
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          # 70% of 50m = 35m per pod. The controller ignores changes within 10% of the
+          # target, so scale-up starts above about 77% and scale-down below about 63%.
+          averageUtilization: 70
+  # behavior: left at the defaults, which suit this app:
+  #   scale up   immediately (no stabilization), at most +100% or +4 pods per 15 s
+  #   scale down only to the HIGHEST recommendation of the last 300 s, so a short dip in
+  #              load does not remove pods that the next spike needs again

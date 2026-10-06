@@ -10,6 +10,7 @@ resources:
   - resourcequota.yaml # #30
   - pdb.yaml # #32
   - networkpolicy.yaml # #33
+  - hpa.yaml # #34
 
 labels:
   # On every object's metadata only. The selectors (Deployment, Service, PDB) spell out

@@ -5,9 +5,9 @@ kind: Deployment
 metadata:
   name: lab-api
 spec:
-  # #28: three replicas on one node. Not for node failure (there is one node), but so a
-  # rollout or a crashed pod never leaves zero pods serving.
-  replicas: 3
+  # No replicas: here. The HPA (#34, hpa.yaml) owns the count: 3 to 5 pods. Three at least
+  # (#28): not for node failure (there is one node), but so a rollout or a crashed pod
+  # never leaves zero pods serving. A new Deployment starts at 1 until the HPA's first pass.
   # Keep 5 old ReplicaSets for `kubectl rollout undo` (the default is 10).
   revisionHistoryLimit: 5
   # Mark the rollout failed if it makes no progress in 2 minutes (default 10).
