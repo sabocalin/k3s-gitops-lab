@@ -68,6 +68,10 @@ single node, where endpoint removal takes effect almost at once, so the race it 
 did not occur. It is kept (it costs 5 s per pod shutdown) and will be measured again through
 Traefik's Ingress in #35, where a separate router learns of endpoint changes later.
 
+**Measured in #35:** through Traefik it matters. Rollouts without preStop failed about 1% of
+requests (409 of 39,400: 502s and timeouts); with preStop, 0 of 51,600. See
+[35-ingress.md](35-ingress.md).
+
 ## Gotchas
 - **Pods cannot resolve external names** (found here, not caused by this task). The VPC
   (`10.42.0.0/16`, #9) overlaps K3s's default pod network (`10.42.0.0/16`). CoreDNS forwards to

@@ -9,7 +9,8 @@
 # labelled k3s-gitops-lab/deploy-path=<name>; every container with cpu/memory requests and
 # limits; exactly one LimitRange and one ResourceQuota (#30); exactly one PodDisruptionBudget
 # that selects the Deployment's pods and still allows an eviction (#32); one HPA owning the
-# replica count, within the pod quota (#34); a default-deny
+# replica count, within the pod quota (#34); Ingresses only on class traefik, to a Service in
+# the overlay, on an allowlist of Exact paths (#35); a default-deny
 # NetworkPolicy plus one letting Traefik's pods (kube-system) reach the app (#33). Across
 # overlays: no shared namespace.
 # Needs yq (mikefarah, v4) and jq.
@@ -108,6 +109,20 @@ for dir in k8s/overlays/*/; do
         "PodDisruptionBudget minAvailable \($b[0].spec.minAvailable) must be a number below the minimum replicas (\($min))"
       else empty end')
   [ -z "$pdb" ] || problem "$name: $pdb"
+
+  # #35: Ingresses: class traefik, backends are Services of this overlay, and only
+  # allowlisted Exact paths, so /metrics, /ready and /docs never become public by a Prefix.
+  ingress=$(echo "$objects" | jq -rs '
+    ([.[] | select(.kind == "Service") | .metadata.name]) as $svcs
+    | .[] | select(.kind == "Ingress") as $i
+    | $i.spec.rules[]?.http.paths[]? as $p
+    | if $i.spec.ingressClassName != "traefik" then "Ingress/\($i.metadata.name): ingressClassName \($i.spec.ingressClassName) (want traefik)"
+      elif $p.pathType != "Exact" or ([$p.path] | inside(["/", "/health"]) | not) then
+        "Ingress/\($i.metadata.name): path \($p.pathType) \($p.path) is not on the allowlist (Exact / or /health)"
+      elif ($svcs | index($p.backend.service.name)) == null then
+        "Ingress/\($i.metadata.name): backend Service \($p.backend.service.name) is not in this overlay"
+      else empty end')
+  [ -z "$ingress" ] || problem "$name: $ingress"
 
   # #33: a default deny for every pod, both directions, with no allow rules of its own.
   deny=$(echo "$objects" | jq -r 'select(.kind == "NetworkPolicy")
