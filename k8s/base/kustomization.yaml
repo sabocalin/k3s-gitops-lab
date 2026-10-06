@@ -8,6 +8,7 @@ resources:
   - service.yaml
   - limitrange.yaml # #30
   - resourcequota.yaml # #30
+  - pdb.yaml # #32
 
 labels:
   # Also written into selectors (Deployment matchLabels, Service selector). Selectors are
