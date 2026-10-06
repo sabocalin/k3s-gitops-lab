@@ -5,7 +5,8 @@ metadata:
   name: lab-api
 spec:
   type: ClusterIP
-  selector: {} # filled by kustomization.yaml labels (app.kubernetes.io/name)
+  selector:
+    app.kubernetes.io/name: lab-api
   ports:
     - name: http
       port: 80
