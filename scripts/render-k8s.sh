@@ -8,7 +8,8 @@
 # namespace (so nothing else cluster-scoped); every container image pinned by digest; pods
 # labelled k3s-gitops-lab/deploy-path=<name>; every container with cpu/memory requests and
 # limits; exactly one LimitRange and one ResourceQuota (#30); exactly one PodDisruptionBudget
-# that selects the Deployment's pods and still allows an eviction (#32); a default-deny
+# that selects the Deployment's pods and still allows an eviction (#32); one HPA owning the
+# replica count, within the pod quota (#34); a default-deny
 # NetworkPolicy plus one letting Traefik's pods (kube-system) reach the app (#33). Across
 # overlays: no shared namespace.
 # Needs yq (mikefarah, v4) and jq.
@@ -75,16 +76,36 @@ for dir in k8s/overlays/*/; do
     [ "$count" = 1 ] || problem "$name: expected exactly one $kind, found $count"
   done
 
-  # #32: one PDB, selecting exactly the Deployment's pods, with minAvailable below replicas.
-  # minAvailable >= replicas allows zero evictions: every drain would hang forever.
+  # #34: one HPA owns the Deployment's replica count, so the Deployment must not set one
+  # (every apply would reset the HPA). Its maximum, plus the rollout's surge pod, must fit
+  # the ResourceQuota's pod count.
+  hpa=$(echo "$objects" | jq -rs '
+    ([.[] | select(.kind == "HorizontalPodAutoscaler")]) as $h
+    | ([.[] | select(.kind == "Deployment")][0]) as $d
+    | ([.[] | select(.kind == "ResourceQuota")][0].spec.hard.pods // "0" | tonumber) as $podquota
+    | ($d.spec.strategy.rollingUpdate.maxSurge // 1) as $surge
+    | if ($h | length) != 1 then "expected exactly one HorizontalPodAutoscaler, found \($h | length)"
+      elif $h[0].spec.scaleTargetRef != {"apiVersion": "apps/v1", "kind": "Deployment", "name": $d.metadata.name} then
+        "HorizontalPodAutoscaler targets \($h[0].spec.scaleTargetRef), not Deployment/\($d.metadata.name)"
+      elif $d.spec.replicas != null then
+        "Deployment sets replicas: \($d.spec.replicas); the HorizontalPodAutoscaler owns it"
+      elif ($surge | type) != "number" or $h[0].spec.maxReplicas + $surge > $podquota then
+        "HorizontalPodAutoscaler maxReplicas \($h[0].spec.maxReplicas) + maxSurge \($surge) exceeds the ResourceQuota pods (\($podquota))"
+      else empty end')
+  [ -z "$hpa" ] || problem "$name: $hpa"
+
+  # #32: one PDB, selecting exactly the Deployment's pods, with minAvailable below the
+  # HPA's minReplicas (#34). minAvailable >= replicas allows zero evictions: every drain
+  # would hang forever.
   pdb=$(echo "$objects" | jq -rs '
     ([.[] | select(.kind == "PodDisruptionBudget")]) as $b
     | ([.[] | select(.kind == "Deployment")][0]) as $d
+    | ([.[] | select(.kind == "HorizontalPodAutoscaler")][0].spec.minReplicas // $d.spec.replicas // 1) as $min
     | if ($b | length) != 1 then "expected exactly one PodDisruptionBudget, found \($b | length)"
       elif $b[0].spec.selector.matchLabels != $d.spec.selector.matchLabels then
         "PodDisruptionBudget selector \($b[0].spec.selector.matchLabels) != Deployment selector \($d.spec.selector.matchLabels)"
-      elif ($b[0].spec.minAvailable | type) != "number" or $b[0].spec.minAvailable >= $d.spec.replicas then
-        "PodDisruptionBudget minAvailable \($b[0].spec.minAvailable) must be a number below replicas (\($d.spec.replicas))"
+      elif ($b[0].spec.minAvailable | type) != "number" or $b[0].spec.minAvailable >= $min then
+        "PodDisruptionBudget minAvailable \($b[0].spec.minAvailable) must be a number below the minimum replicas (\($min))"
       else empty end')
   [ -z "$pdb" ] || problem "$name: $pdb"
 
