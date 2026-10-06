@@ -8,8 +8,9 @@
 # namespace (so nothing else cluster-scoped); every container image pinned by digest; pods
 # labelled k3s-gitops-lab/deploy-path=<name>; every container with cpu/memory requests and
 # limits; exactly one LimitRange and one ResourceQuota (#30); exactly one PodDisruptionBudget
-# that selects the Deployment's pods and still allows an eviction (#32). Across overlays: no
-# shared namespace.
+# that selects the Deployment's pods and still allows an eviction (#32); a default-deny
+# NetworkPolicy plus one letting Traefik's pods (kube-system) reach the app (#33). Across
+# overlays: no shared namespace.
 # Needs yq (mikefarah, v4) and jq.
 set -eu
 
@@ -86,6 +87,21 @@ for dir in k8s/overlays/*/; do
         "PodDisruptionBudget minAvailable \($b[0].spec.minAvailable) must be a number below replicas (\($d.spec.replicas))"
       else empty end')
   [ -z "$pdb" ] || problem "$name: $pdb"
+
+  # #33: a default deny for every pod, both directions, with no allow rules of its own.
+  deny=$(echo "$objects" | jq -r 'select(.kind == "NetworkPolicy")
+    | select((.spec.podSelector // {}) == {} and (.spec.policyTypes | index("Ingress") and index("Egress"))
+             and .spec.ingress == null and .spec.egress == null) | .metadata.name')
+  [ -n "$deny" ] || problem "$name: no default-deny NetworkPolicy (podSelector {}, Ingress and Egress, no rules)"
+  # ...and the app reachable from Traefik: one peer with BOTH selectors (AND), so neither a
+  # label transformer rewriting the pod selector nor a split into two peers (OR) slips by.
+  traefik=$(echo "$objects" | jq -rs '
+    ([.[] | select(.kind == "Deployment")][0].spec.selector.matchLabels) as $app
+    | [.[] | select(.kind == "NetworkPolicy" and .spec.podSelector.matchLabels == $app)
+       | .spec.ingress[]?.from[]?
+       | select(.namespaceSelector.matchLabels == {"kubernetes.io/metadata.name": "kube-system"}
+                and .podSelector.matchLabels == {"app.kubernetes.io/name": "traefik"})] | length')
+  [ "$traefik" -ge 1 ] || problem "$name: no NetworkPolicy lets Traefik (kube-system, app.kubernetes.io/name=traefik) reach the app"
 
   unlabelled=$(echo "$objects" | jq -r --arg ns "$name" \
     'select(.spec.template.metadata?) | select(.spec.template.metadata.labels["k3s-gitops-lab/deploy-path"] != $ns) | "\(.kind)/\(.metadata.name)"')

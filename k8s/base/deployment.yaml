@@ -19,9 +19,15 @@ spec:
       maxUnavailable: 0
       # One extra pod at a time (4 during a rollout), so memory on the 2 GiB node stays bounded.
       maxSurge: 1
+  # Written here, not by a Kustomize label transformer: that transformer would also rewrite
+  # the peer selectors in NetworkPolicies (#33). Immutable after creation.
   selector:
-    matchLabels: {} # filled by kustomization.yaml labels (app.kubernetes.io/name)
+    matchLabels:
+      app.kubernetes.io/name: lab-api
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: lab-api
     spec:
       # SIGTERM → wait at most this long for the pod to exit (preStop counts towards it).
       terminationGracePeriodSeconds: 30

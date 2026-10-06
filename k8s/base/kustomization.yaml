@@ -9,13 +9,15 @@ resources:
   - limitrange.yaml # #30
   - resourcequota.yaml # #30
   - pdb.yaml # #32
+  - networkpolicy.yaml # #33
 
 labels:
-  # Also written into selectors (Deployment matchLabels, Service selector). Selectors are
-  # immutable after creation, so only this one stable label goes there.
+  # On every object's metadata only. The selectors (Deployment, Service, PDB) spell out
+  # app.kubernetes.io/name themselves: includeSelectors would also rewrite the peer
+  # selectors inside NetworkPolicies, turning "Traefik's pods" into "lab-api pods" (#33).
   - pairs:
       app.kubernetes.io/name: lab-api
-    includeSelectors: true
+    includeSelectors: false
   # Not in selectors, so changing these later never touches one. includeTemplates: also on
   # the pods, where NetworkPolicy (#33) and metrics select by label.
   - pairs:

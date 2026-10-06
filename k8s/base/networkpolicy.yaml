@@ -1,0 +1,45 @@
+# #33: pod firewall, enforced by K3s's embedded network policy controller (kube-router,
+# iptables on the node). Policies only ever ADD allowed traffic: a pod selected by any
+# policy for a direction accepts only what some policy allows; everything else is dropped.
+#
+# 1. Nothing in, nothing out, for every pod in the namespace.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+spec:
+  podSelector: {} # every pod in the namespace, including ones added later
+  # Egress too: the app makes no outbound calls (no DNS, no API server, no internet), so a
+  # compromised pod gets nowhere. Without "Egress" here, egress would stay open.
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# 2. The app accepts Traefik (the ingress controller, #35) and nothing else.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-traefik-to-lab-api
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: lab-api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        # ONE list item with both selectors = AND: Traefik's pods, in kube-system.
+        # As two items ("- namespaceSelector" and "- podSelector") it would be OR: every pod
+        # in kube-system, plus any pod labelled traefik in THIS namespace.
+        - namespaceSelector:
+            matchLabels:
+              # Set by the API server on every namespace; cannot be faked by renaming.
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+      ports:
+        # The POD's port (container port "http" = 8000), not the Service's port 80: policies
+        # are checked after the Service has been translated to a pod address.
+        - port: http
+          protocol: TCP
