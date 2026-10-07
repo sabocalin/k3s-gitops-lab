@@ -61,3 +61,10 @@ subjects:
   - kind: ServiceAccount
     name: github-deployer
     namespace: push
+  # #39: what deploy-push.yml actually logs in as. Not a ServiceAccount token (nothing to
+  # store or leak): a short-lived GitHub OIDC token from this repository's "production"
+  # environment, which the API server maps to this user name. Must match
+  # ansible/roles/k3s/templates/authentication-config.yaml.j2 ("github:" + sub).
+  - kind: User
+    apiGroup: rbac.authorization.k8s.io
+    name: "github:repo:sabocalin@238511101/k3s-gitops-lab@1385841640:environment:production"

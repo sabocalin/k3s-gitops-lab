@@ -1,0 +1,30 @@
+# Managed by Ansible (k3s-gitops-lab, #39). Read by the API server at start
+# (kube-apiserver --authentication-config, from config.yaml). Adds ONE extra way to log in:
+# a GitHub Actions OIDC token. Client certificates and ServiceAccount tokens keep working.
+apiVersion: apiserver.config.k8s.io/v1
+kind: AuthenticationConfiguration
+# K3s normally starts the API server with --anonymous-auth=false, but leaves that flag out
+# once an authentication config file is given ("Not setting kube-apiserver 'anonymous-auth'
+# flag"). Without this block, requests without credentials became system:anonymous:
+# /version and /readyz answered 200 instead of 401. Measured; see docs/learning/39-*.md.
+anonymous:
+  enabled: false
+jwt:
+  - issuer:
+      # The API server fetches GitHub's signing keys from <url>/.well-known/openid-configuration.
+      url: https://token.actions.githubusercontent.com
+      # The job asks for a token with exactly this audience; a token minted for anything
+      # else (AWS's sts.amazonaws.com, another service) is refused.
+      audiences:
+        - {{ k3s_github_oidc_audience }}
+    claimValidationRules:
+      # Both must hold; each is a separate, explicit check.
+      - expression: 'claims.repository_id == "{{ k3s_github_oidc_repository_id }}"'
+        message: token is not from the k3s-gitops-lab repository
+      - expression: 'claims.sub == "{{ k3s_github_oidc_subject }}"'
+        message: token is not from the production environment of k3s-gitops-lab
+    claimMappings:
+      # The Kubernetes user name. "github:" keeps it apart from system: and other users;
+      # RBAC binds exactly this name (k8s/namespaces/push/rbac.yaml).
+      username:
+        expression: '"github:" + claims.sub'
