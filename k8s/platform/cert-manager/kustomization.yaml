@@ -1,0 +1,68 @@
+# #36: cert-manager, cluster-wide (one per cluster, not per app namespace). Applied by
+# hand for now (kubectl apply -k); ArgoCD takes it over in #43. The ClusterIssuers are a
+# separate kustomization (../cluster-issuers), applied after this one: their CRD and the
+# webhook that validates them must exist first.
+#
+# vendor/cert-manager-v1.21.2.yaml is the upstream release manifest, unmodified. Its
+# sha256 (vendor/SHA256SUMS) matched GitHub's published asset digest when vendored, and
+# scripts/render-k8s.sh checks it on every run. Everything this project changes is below,
+# so an upgrade is: replace the file, update SHA256SUMS and the digests, re-render.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - vendor/cert-manager-v1.21.2.yaml
+
+# By digest, not tag. Each digest's cosign signature was verified against cert-manager's
+# public key (cert-manager-pubkey-2021-09-20.pem, RSA, SHA-512 signatures):
+#   cosign verify --key <pem> --signature-digest-algorithm sha512 \
+#     --insecure-ignore-tlog=true quay.io/jetstack/cert-manager-<name>@<digest>
+images:
+  - name: quay.io/jetstack/cert-manager-controller
+    digest: sha256:70f532fd9cfde0b09d55687200942399d89838bc2d5d5b45152eb799a15912b8
+  - name: quay.io/jetstack/cert-manager-webhook
+    digest: sha256:a60e2dac46dbb8a7f3df95c54ce941012f54c2fe022f0ee55aaa1ab40ed957ae
+  - name: quay.io/jetstack/cert-manager-cainjector
+    digest: sha256:c85268c64f2e0e76684bf5fe8906caff34b82523561c6affe0fae3546bd87562
+
+patches:
+  # Pod Security "restricted" on the namespace, as for the app namespaces (#31). The
+  # upstream pods already comply (non-root, seccomp, read-only root, no capabilities).
+  - target: {kind: Namespace, name: cert-manager}
+    patch: |-
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: cert-manager
+        labels:
+          pod-security.kubernetes.io/enforce: restricted
+          pod-security.kubernetes.io/enforce-version: v1.36
+          pod-security.kubernetes.io/warn: restricted
+          pod-security.kubernetes.io/warn-version: v1.36
+  # The HTTP-01 solver image is not a container of these Deployments but a flag the
+  # controller passes to the solver pods it creates, so `images:` above cannot pin it.
+  - target: {kind: Deployment, name: cert-manager}
+    patch: |-
+      - op: test
+        path: /spec/template/spec/containers/0/args/3
+        value: --acme-http01-solver-image=quay.io/jetstack/cert-manager-acmesolver:v1.21.2
+      - op: replace
+        path: /spec/template/spec/containers/0/args/3
+        value: --acme-http01-solver-image=quay.io/jetstack/cert-manager-acmesolver@sha256:699b40d622211ab7accad8a21b04c5fbaa1841ef7a12621e8de492dbe27b2503
+  # Upstream sets no requests or limits. Sized for this lab (a handful of certificates)
+  # from idle use measured on the node: controller 47Mi, cainjector 22Mi, webhook 21Mi.
+  # Memory limits stop a leak from taking the 2 GiB node down with it.
+  - target: {kind: Deployment, name: "cert-manager-cainjector|cert-manager-webhook"}
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/resources
+        value:
+          requests: {cpu: 10m, memory: 32Mi}
+          limits: {cpu: 200m, memory: 96Mi}
+  - target: {kind: Deployment, name: cert-manager}
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/resources
+        value:
+          requests: {cpu: 10m, memory: 64Mi}
+          limits: {cpu: 200m, memory: 160Mi}

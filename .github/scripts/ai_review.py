@@ -34,7 +34,10 @@ REQUEST_TIMEOUT_S = 90  # an overloaded model can accept the connection and neve
 REVIEW_MARKER = "**🤖 AI review**"  # first bytes of every review this script posts
 BOT_LOGIN = "github-actions[bot]"
 EXCLUDES = [":(exclude)*.lock", ":(exclude)*-lock.json", ":(exclude)*.svg",
-            ":(exclude)*.png", ":(exclude)*.jpg"]
+            ":(exclude)*.png", ":(exclude)*.jpg",
+            # Vendored upstream release files (#36): unreviewable here, and one of them
+            # alone would fill MAX_DIFF_CHARS. Their hashes are checked by render-k8s.sh.
+            ":(exclude,glob)**/vendor/**"]
 
 SYSTEM_PROMPT = """You review pull requests for k3s-gitops-lab: a $0-budget learning \
 project with Terraform (AWS), Ansible, K3s/Kubernetes manifests, GitHub Actions and a \

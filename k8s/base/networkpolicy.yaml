@@ -43,3 +43,28 @@ spec:
         # are checked after the Service has been translated to a pod address.
         - port: http
           protocol: TCP
+---
+# 3. #36: cert-manager's HTTP-01 solver. While a certificate is being issued, cert-manager
+# runs a solver pod in this namespace and an Ingress for /.well-known/acme-challenge/<token>.
+# Let's Encrypt fetches that URL through Traefik; default-deny would drop it at the pod.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-traefik-to-acme-solver
+spec:
+  podSelector:
+    matchLabels:
+      acme.cert-manager.io/http01-solver: "true" # set by cert-manager on every solver pod
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+      ports:
+        - port: 8089 # the solver's fixed listen port
+          protocol: TCP

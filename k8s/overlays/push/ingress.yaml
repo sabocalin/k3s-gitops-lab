@@ -1,23 +1,35 @@
-# #35: public HTTP entry. K3s's Traefik (kube-system) reads Ingress objects, opens a router
-# for each rule and forwards to the Service's ready pod IPs (from its EndpointSlices; the
-# ClusterIP is not used). Reached at http://<public-ip>.sslip.io/ on port 80.
+# #35: public entry. K3s's Traefik (kube-system) reads Ingress objects, opens a router for
+# each rule and forwards to the Service's ready pod IPs (from its EndpointSlices; the
+# ClusterIP is not used).
+# #36: HTTPS at https://k3s-gitops-lab.duckdns.org/ with a Let's Encrypt certificate that
+# cert-manager issues and renews; plain HTTP redirects to HTTPS.
 #
-# In the push overlay only: two host-less Ingresses (push and gitops) would claim the same
-# requests. How the gitops copy is exposed is decided with ArgoCD (#42/#44).
+# In the push overlay only: how the gitops copy is exposed is decided with ArgoCD (#42/#44).
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: lab-api
   annotations:
-    # Only the plain-HTTP entry point (:80) for now; cert-manager and HTTPS come in #36.
-    # Without this, Traefik also serves the route on :443 with its self-signed certificate.
-    traefik.ingress.kubernetes.io/router.entrypoints: web
+    # cert-manager's ingress-shim sees this and creates a Certificate for spec.tls below,
+    # stored in the Secret named there. Production; staging was used first (see #36 notes).
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # Both entry points: :80 (web) and :443 (websecure).
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+    # On :80 this redirects to https; on :443 it does nothing (already https). The
+    # HTTP-01 challenge is not affected: cert-manager's own solver Ingress has a longer,
+    # more specific rule, which Traefik prefers.
+    traefik.ingress.kubernetes.io/router.middlewares: push-redirect-https@kubernetescrd
 spec:
   ingressClassName: traefik # explicit, though it is K3s's default class
+  tls:
+    - hosts:
+        - k3s-gitops-lab.duckdns.org
+      secretName: lab-api-tls # created and renewed by cert-manager
   rules:
-    # No host: the public IP, and so <ip>.sslip.io, changes on every start (#61), and a host
-    # written here would be stale after the next one. Any Host header matches.
-    - http:
+    # A fixed name: the node points it at its new IP at every boot (#36, ansible/roles/ddns).
+    # Requests for any other Host (the bare IP, <ip>.sslip.io) no longer match: 404.
+    - host: k3s-gitops-lab.duckdns.org
+      http:
         paths:
           # An allowlist of Exact paths. "Prefix: /" would also publish /metrics, /ready
           # and FastAPI's /docs and /openapi.json. /metrics stays in-cluster (#48).
