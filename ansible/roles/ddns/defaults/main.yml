@@ -1,0 +1,8 @@
+# #36: dynamic DNS. The node's public IP changes on every start (no Elastic IP: it bills
+# while stopped), so at every boot the node points this DuckDNS name at its new address.
+# The name is fixed, so it can live in git (Ingress host, TLS certificate).
+ddns_subdomain: k3s-gitops-lab # -> k3s-gitops-lab.duckdns.org
+# SecureString created out of band (runbook: docs/learning/36-dynamic-dns.md). The node role
+# may read exactly this parameter (terraform/platform/iam_node.tf).
+ddns_token_parameter: /k3s-gitops-lab/duckdns/token
+ddns_region: eu-central-1

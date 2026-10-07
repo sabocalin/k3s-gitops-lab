@@ -1,0 +1,31 @@
+# Managed by Ansible (k3s-gitops-lab, #36).
+[Unit]
+Description=Point {{ ddns_subdomain }}.duckdns.org at this node's public IP
+Documentation=https://github.com/sabocalin/k3s-gitops-lab/blob/main/docs/learning/36-dynamic-dns.md
+Wants=network-online.target
+After=network-online.target snapd.seeded.service
+# Give up after 20 failed tries in 10 minutes (DuckDNS or SSM down): then it is a human's turn.
+StartLimitIntervalSec=600
+StartLimitBurst=20
+
+[Service]
+Type=oneshot
+# Stays "active (exited)" after a successful run: Ansible's "started" is then idempotent,
+# and `systemctl status duckdns-update` shows the last result.
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/duckdns-update
+Restart=on-failure
+RestartSec=15
+# Hardening. Runs as root: the AWS CLI is a snap, and snap needs /root.
+# NOT NoNewPrivileges=yes: /snap/bin/aws starts through snap-confine, which is setuid and
+# switches AppArmor profile. Both are refused under no_new_privs ("cannot change profile
+# for the next exec call: Operation not permitted"), so every run would fail.
+PrivateTmp=yes
+ProtectSystem=full
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,31 @@
+- name: Install the DuckDNS update script
+  ansible.builtin.template:
+    src: duckdns-update.sh.j2
+    dest: /usr/local/sbin/duckdns-update
+    owner: root
+    group: root
+    mode: "0750"
+  notify: Run the DuckDNS update
+
+- name: Install the DuckDNS update unit
+  ansible.builtin.template:
+    src: duckdns-update.service.j2
+    dest: /etc/systemd/system/duckdns-update.service
+    owner: root
+    group: root
+    mode: "0644"
+  register: ddns_unit
+  notify:
+    - Reload systemd for DuckDNS
+    - Run the DuckDNS update
+
+- name: Flush handlers (reload systemd before enabling a new unit)
+  ansible.builtin.meta: flush_handlers
+
+- name: DuckDNS update runs at every boot, and has run now
+  ansible.builtin.systemd_service:
+    name: duckdns-update
+    enabled: true
+    state: started
+  # Fresh host under --check: the unit file is only "would be created".
+  when: not (ansible_check_mode and ddns_unit is changed)
