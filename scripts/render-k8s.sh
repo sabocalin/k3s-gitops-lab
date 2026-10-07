@@ -4,6 +4,12 @@
 #
 #   scripts/render-k8s.sh [output dir]     (default: a temporary directory)
 #
+# #38: each overlay <name> is rendered together with k8s/namespaces/<name> (the Namespace and
+# its guardrails, applied by an admin) and the checks below run on both. On top: the split
+# holds (guardrail and RBAC kinds only in k8s/namespaces/<name>, never in the overlay, so a
+# deployer never applies them), and where a deployer Role exists, it covers every kind the
+# overlay contains.
+#
 # Per overlay <name>: exactly one Namespace, named <name>; every other object in that
 # namespace (so nothing else cluster-scoped); every container image pinned by digest; pods
 # labelled k3s-gitops-lab/deploy-path=<name>; every container with cpu/memory requests and
@@ -34,12 +40,42 @@ seen=""
 for dir in k8s/overlays/*/; do
   name=$(basename "$dir")
   file=$out/$name.yaml
+  nsfile=$out/$name-namespace.yaml
   if ! "$KUSTOMIZE" build "$dir" >"$file"; then
     problem "$name: kustomize build failed"
     continue
   fi
-  # One JSON object per line, for jq.
-  objects=$(yq -o json -I0 '.' "$file")
+  if ! "$KUSTOMIZE" build "k8s/namespaces/$name" >"$nsfile"; then
+    problem "$name: kustomize build of k8s/namespaces/$name failed (every overlay needs one)"
+    continue
+  fi
+  # One JSON object per line, for jq. app: what the deployer applies; ns: the admin's part.
+  app=$(yq -o json -I0 '.' "$file")
+  ns=$(yq -o json -I0 '.' "$nsfile")
+  objects=$(printf '%s\n%s\n' "$ns" "$app")
+
+  # #38: the ownership split. Guardrails and identities are never part of what a deployer
+  # applies; the namespace part holds nothing else.
+  guarded='["Namespace", "LimitRange", "ResourceQuota", "NetworkPolicy", "ServiceAccount", "Role", "RoleBinding", "Secret"]'
+  leaked=$(printf '%s\n' "$app" | jq -r --argjson g "$guarded" 'select(.kind | IN($g[])) | "\(.kind)/\(.metadata.name)"' | paste -sd, -)
+  [ -z "$leaked" ] || problem "$name: guardrail/identity objects in k8s/overlays/$name (belong in k8s/namespaces/$name): $leaked"
+  stray=$(printf '%s\n' "$ns" | jq -r --argjson g "$guarded" 'select(.kind | IN($g[]) | not) | "\(.kind)/\(.metadata.name)"' | paste -sd, -)
+  [ -z "$stray" ] || problem "$name: app objects in k8s/namespaces/$name (belong in k8s/overlays/$name): $stray"
+
+  # #38: if a deployer Role exists, it can get, create and patch every kind in the overlay
+  # (kubectl apply needs exactly those), so a deploy never dies on a missing permission.
+  # Resource names from kinds: lowercase plural (Ingress -> ingresses).
+  uncovered=$(printf '%s\n%s\n' "$ns" "$app" | jq -rs '
+    ([.[] | select(.kind == "Role" and .metadata.name == "github-deployer")][0]) as $role
+    | if $role == null then empty else
+        .[] | select(.kind | IN("Namespace", "LimitRange", "ResourceQuota", "NetworkPolicy", "ServiceAccount", "Role", "RoleBinding") | not)
+        | (.apiVersion | if test("/") then split("/")[0] else "" end) as $group
+        | (.kind | ascii_downcase | if endswith("s") then . + "es" elif endswith("y") then .[:-1] + "ies" else . + "s" end) as $res
+        | select([$role.rules[] | select((.apiGroups | index($group)) and (.resources | index($res)))
+                  | .verbs] | add // [] | (index("get") and index("create") and index("patch")) | not)
+        | "\(.kind) (\($group)/\($res))"
+      end' | paste -sd, -)
+  [ -z "$uncovered" ] || problem "$name: Role github-deployer cannot get/create/patch: $uncovered"
 
   namespaces=$(printf '%s\n' "$objects" | jq -r 'select(.kind == "Namespace") | .metadata.name')
   [ "$namespaces" = "$name" ] ||

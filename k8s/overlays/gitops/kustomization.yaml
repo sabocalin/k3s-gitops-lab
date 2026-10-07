@@ -2,16 +2,16 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# Every object from the base, and the Namespace itself, lands in this namespace.
+# Every object from the base lands in this namespace. The Namespace itself, and its
+# guardrails, are k8s/namespaces/gitops (#38): applied by an admin, before this overlay.
 namespace: gitops
 
 resources:
-  - namespace.yaml
   - ../../base
 
 labels:
   # Not in selectors; also on the pods (includeTemplates). Which delivery path manages
-  # these objects. part-of again here so the Namespace (not from the base) carries it too.
+  # these objects. part-of again here, as in k8s/namespaces/*, so every object carries it.
   - pairs:
       k3s-gitops-lab/deploy-path: gitops
       app.kubernetes.io/part-of: k3s-gitops-lab

@@ -1,0 +1,19 @@
+# #38: the guardrails every app namespace gets, owned by an admin, never by a deployer:
+# LimitRange and ResourceQuota (#30), NetworkPolicies (#33, #36). A deployer who could
+# change these could raise its own quota or open the network. Used by k8s/namespaces/*.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - limitrange.yaml # #30
+  - resourcequota.yaml # #30
+  - networkpolicy.yaml # #33, #36
+
+labels:
+  # The same labels these objects carried when they lived in k8s/base (before #38).
+  - pairs:
+      app.kubernetes.io/name: lab-api
+    includeSelectors: false
+  - pairs:
+      app.kubernetes.io/part-of: k3s-gitops-lab
+    includeSelectors: false
