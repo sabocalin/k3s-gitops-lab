@@ -105,8 +105,20 @@ Before the merge (the deploy job itself only runs on `main`):
 | Tailnet policy saved | its tests passed (tag:ci: 6443 accept, 22 and 10250 deny; you: 22 and 6443 accept); from the laptop, API and SSH still work |
 | Render, zizmor | `make k8s` OK; `zizmor 1.30.1`: no findings |
 
-After the merge: the first `deploy-push` run and the ephemeral device's removal are
-recorded in a follow-up.
+After the merge: the first `deploy-push` run (one run, three attempts):
+
+| Attempt | What happened |
+|---|---|
+| 1, node **stopped** | render, checks, image signature: ok. **Tailscale login through GitHub OIDC worked** (no stored secret), then `Ping host k3s-node did not respond` → job failed before any deploy step (fails closed). Post step logged the device out |
+| 2, after `make start` | tailnet: `6443 succeeded`, `22` and `10250` **not reachable**. Kubernetes: `logged in as github:repo:sabocalin@238511101/k3s-gitops-lab@1385841640:environment:production`, then `no (want yes) can-i create deployments.apps -n push` → stopped before applying. Cause: the RoleBinding's new `User` subject was in git but `k8s/namespaces/push` (admin-applied) had not been applied. An unplanned negative control: **authenticated but not authorized is refused** |
+| 3, after applying `k8s/namespaces/push` | all 6 `can-i` as expected; `token for another audience: refused`; apply (all unchanged); `successfully rolled out`; `all 5 running pods on sha256:7952a156…`; `https://k3s-gitops-lab.duckdns.org/health -> 200` |
+
+From the laptop during attempt 3: `github-runnervm8df0l` (`tag:ci`) appeared on the tailnet;
+**about 20 s after the job ended, no `tag:ci` device remained** (ephemeral).
+
+The follow-up PR that recorded this also bumped the push overlay to a newly published,
+signed digest (`sha256:1b612533…`), so its merge exercises a real rolling update through
+CI.
 
 ## Gotchas
 - **An authentication config file silently re-enables anonymous requests on K3s.** K3s
@@ -117,6 +129,10 @@ recorded in a follow-up.
   (`anonymous: enabled: false`), and measured both ways.
 - **The `gh variable set` prompt needs a terminal.** Run through Claude Code's `!` it got no
   input and failed with `missing required key: value`; `--body` works.
+- **Admin-owned changes don't deploy themselves.** The RoleBinding change lived in
+  `k8s/namespaces/push`, which CI deliberately cannot apply (#38). Until an admin applies it,
+  the job authenticates and is then refused. Apply `k8s/namespaces/*` before merging
+  anything that depends on it. ArgoCD takes this over in #43.
 - **The cluster CA is pinned in git.** After a rebuild the deploy fails with an x509 error
   until `k8s/ci/cluster-ca.crt` is updated. That's on purpose: it fails closed.
 - **`tailscale/github-action` caches binaries by default.** For a deploy job that's turned

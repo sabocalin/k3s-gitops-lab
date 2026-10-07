@@ -23,4 +23,4 @@ labels:
 # The exact build, by digest: signed by CI (#25). A tag could be moved; a digest cannot.
 images:
   - name: ghcr.io/sabocalin/k3s-gitops-lab/lab-api
-    digest: sha256:7952a1567b7da01e15b033fb407d3a0ecb50670dbb647b18eca7fa13254d5279
+    digest: sha256:1b6125331f632d5d713bdc760a6f0f3d6049cdc56a498f3e38f31493e8c6ddd2
