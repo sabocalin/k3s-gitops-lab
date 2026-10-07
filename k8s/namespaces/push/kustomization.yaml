@@ -1,0 +1,19 @@
+# #38: the "push" namespace and its guardrails, applied by an admin (later ArgoCD, #43),
+# before k8s/overlays/push. Pod Security level, quota, limits and network policy are set
+# here, out of reach of whoever deploys the app.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: push
+
+resources:
+  - namespace.yaml
+  - ../../namespace-base
+  - rbac.yaml # #38: the CI deployer's identity and permissions
+
+labels:
+  # The same labels as k8s/overlays/push, so these objects look as they did before #38.
+  - pairs:
+      k3s-gitops-lab/deploy-path: push
+      app.kubernetes.io/part-of: k3s-gitops-lab
+    includeSelectors: false

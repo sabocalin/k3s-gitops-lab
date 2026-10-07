@@ -1,0 +1,63 @@
+# #38: the identity GitHub Actions deploys as (#39), and exactly what it may do: apply
+# k8s/overlays/push in this namespace, and watch the rollout. Nothing cluster-wide, nothing
+# in any other namespace (a Role and RoleBinding only exist inside "push").
+#
+# Deliberately NOT granted: delete (no pruning; removing things is an admin's job),
+# Secrets (the TLS key lives here), RBAC (no granting itself more), NetworkPolicy,
+# ResourceQuota, LimitRange and the Namespace (the guardrails, k8s/namespaces/push),
+# pods/exec and port-forward. scripts/render-k8s.sh checks that every kind in
+# k8s/overlays/push is covered by the "deploy" rules below, so a deploy never fails on
+# a missing permission and the Role never grows past what the overlay needs.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: github-deployer
+# Used from outside the cluster (CI), never by a pod: no token is mounted anywhere.
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: github-deployer
+rules:
+  # Deploy: kubectl apply reads the live object (get), then creates or patches it.
+  # list/watch: kubectl diff and rollout status. No update (apply patches), no delete.
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [get, list, watch, create, patch]
+  - apiGroups: [""]
+    resources: [services]
+    verbs: [get, list, watch, create, patch]
+  - apiGroups: [autoscaling]
+    resources: [horizontalpodautoscalers]
+    verbs: [get, list, watch, create, patch]
+  - apiGroups: [policy]
+    resources: [poddisruptionbudgets]
+    verbs: [get, list, watch, create, patch]
+  - apiGroups: [networking.k8s.io]
+    resources: [ingresses]
+    verbs: [get, list, watch, create, patch]
+  - apiGroups: [traefik.io]
+    resources: [middlewares]
+    verbs: [get, list, watch, create, patch]
+  # Observe: rollout status follows ReplicaSets; pods, logs and events explain a failed
+  # rollout in the CI log. Read-only.
+  - apiGroups: [apps]
+    resources: [replicasets]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [pods, pods/log, events]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: github-deployer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: github-deployer
+subjects:
+  - kind: ServiceAccount
+    name: github-deployer
+    namespace: push

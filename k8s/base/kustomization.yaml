@@ -1,15 +1,15 @@
 # #27: what the app IS, identical in every namespace. Overlays (k8s/overlays/*) add
 # WHERE it runs: namespace, deploy-path label, image digest.
+# #38: only what a deployer may change. The namespace's guardrails (Pod Security, quota,
+# limits, network policy) live in k8s/namespace-base and k8s/namespaces/*, applied by an
+# admin, so a deploy can never weaken them.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
   - deployment.yaml
   - service.yaml
-  - limitrange.yaml # #30
-  - resourcequota.yaml # #30
   - pdb.yaml # #32
-  - networkpolicy.yaml # #33
   - hpa.yaml # #34
 
 labels:

@@ -50,7 +50,7 @@ personal`) and Tailscale up (`tsu up`); `scripts/lab.sh` refuses any other AWS a
 | `make lint` | `terraform fmt`/`validate`, tflint, trivy: the same checks as CI, no AWS access |
 | `make test` / `make run` | the app (`app/`): ruff + pytest / serve on `localhost:8000` |
 | `make image` | build the container image `lab-api:dev` (linux/arm64) |
-| `make k8s` | render the Kustomize overlays (`push`, `gitops`) and check them, as CI does |
+| `make k8s` | render and check, as CI does: `k8s/namespaces/*` (namespace + guardrails, admin) with `k8s/overlays/*` (the app, deployer), and `k8s/platform/*` |
 
 ## Container image
 

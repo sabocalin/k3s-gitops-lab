@@ -1,6 +1,6 @@
-# #27: render every Kustomize overlay (k8s/overlays/*) with the pinned kustomize and check
-# the invariants: one Namespace per overlay, everything inside it, images by digest, pods
-# labelled with their deploy path. Same script as `make k8s`.
+# #27: render every Kustomize overlay (k8s/overlays/*), with its namespace part
+# (k8s/namespaces/*, #38), and the platform components (k8s/platform/*, #36), using the
+# pinned kustomize, and check the invariants. Same script as `make k8s`.
 # Runs on every PR, not only ones touching k8s/, because it is a required status check:
 # a required check that never reports blocks the merge.
 name: k8s
