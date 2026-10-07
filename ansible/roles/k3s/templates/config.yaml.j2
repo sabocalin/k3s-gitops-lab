@@ -17,3 +17,7 @@ cluster-dns: {{ k3s_cluster_dns }}
 # DNS for pods and CoreDNS's upstream (kubelet --resolv-conf): not the node's resolv.conf,
 # which carries the tailnet search domain and the VPC resolver's VPC address.
 resolv-conf: /etc/rancher/k3s/resolv.conf
+# #39: also accept GitHub Actions OIDC tokens (see that file); K3s passes this to the
+# embedded API server.
+kube-apiserver-arg:
+  - authentication-config=/etc/rancher/k3s/authentication-config.yaml

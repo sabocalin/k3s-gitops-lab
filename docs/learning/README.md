@@ -38,6 +38,7 @@ verified, and what surprised us. New notes start from [`_template.md`](_template
 | #36 | [A fixed hostname for a changing IP: DuckDNS, updated at boot](36-dynamic-dns.md) (part 1) | 3 |
 | #36 | [cert-manager + Let's Encrypt HTTP-01 (staging, then production)](36-cert-manager.md) (part 2) | 3 |
 | #38 | [Push deploys: a namespace-scoped ServiceAccount and Role](38-deployer-rbac.md) | 4 |
+| #39 | [Push deploys: GitHub Actions joins the tailnet and runs kubectl apply](39-push-deploy.md) | 4 |
 | #57 | [AI code review on pull requests](57-ai-review.md) | 0 |
 | #61 | [`make start / stop / extend / status / up / down`](61-make-lifecycle.md) | 1 |
 | #62 | [Nightly auto-stop (EventBridge Scheduler)](62-nightly-autostop.md) | 1 |

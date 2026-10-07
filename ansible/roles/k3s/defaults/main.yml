@@ -13,3 +13,10 @@ k3s_cluster_dns: 10.53.0.10 # inside k3s_service_cidr
 # Upstream DNS for CoreDNS and pods: Amazon's resolver at its link-local address, the same
 # whatever the VPC's range. No search domains, so pods stop inheriting the node's tailnet one.
 k3s_upstream_dns: 169.254.169.253
+
+# #39: the API server also accepts GitHub Actions OIDC tokens, from this repository's
+# "production" environment only (main, push deploys). Immutable subject format: owner and
+# repository by ID, so a renamed or re-created repository cannot inherit the trust.
+k3s_github_oidc_audience: k3s-gitops-lab
+k3s_github_oidc_subject: "repo:sabocalin@238511101/k3s-gitops-lab@1385841640:environment:production"
+k3s_github_oidc_repository_id: "1385841640"

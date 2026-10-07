@@ -1,0 +1,88 @@
+# #39: the push deploy path. On every merge to main that changes what runs in "push", a
+# job joins the tailnet as an ephemeral device and applies k8s/overlays/push.
+#
+# No stored secrets at all. The job's GitHub OIDC token is its only credential:
+#   - Tailscale: workload identity federation exchanges it for a key for tag:ci (ephemeral,
+#     the device is removed when the job ends). The client ID is not a secret.
+#   - Kubernetes: the API server trusts GitHub tokens with audience k3s-gitops-lab from
+#     this repository's "production" environment, mapped to a user bound to Role
+#     github-deployer in namespace push only (k8s/namespaces/push/rbac.yaml).
+# The tailnet policy lets tag:ci reach only tag:k3s on TCP 6443.
+#
+# The node must be running (make start); if it is stopped the job fails at `tailscale ping`.
+# Re-run it after `make start`.
+name: deploy-push
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - k8s/base/**
+      - k8s/overlays/push/**
+      - scripts/deploy-push.sh
+      - scripts/ci-github-token.sh
+      - scripts/render-k8s.sh
+      - scripts/verify-image.sh
+      - .github/workflows/deploy-push.yml
+  workflow_dispatch:
+
+# Deny everything at workflow level; the job asks for exactly what it needs.
+permissions: {}
+
+# One deploy at a time, in order; never cancel one halfway.
+concurrency:
+  group: deploy-push
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: deploy-push
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # main only (the environment's branch policy); this is also what the OIDC subject
+    # names, so a token from any other job is refused by Tailscale and Kubernetes alike.
+    environment: production
+    permissions:
+      contents: read
+      id-token: write # GitHub OIDC token: Tailscale login and Kubernetes login
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Render with the pinned kustomize and run every invariant check (same as k8s.yml);
+      # deploy-push.sh applies exactly this output.
+      - name: Render and check
+        run: scripts/render-k8s.sh rendered
+
+      # Only an image this repository's image workflow built and signed (#25) is deployed.
+      - name: Verify the image signature
+        run: scripts/verify-image.sh "$(yq 'select(.kind == "Deployment") | .spec.template.spec.containers[0].image' rendered/push.yaml)"
+
+      - name: Join the tailnet (ephemeral, tag:ci)
+        uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd # v4.2.0
+        with:
+          oauth-client-id: ${{ vars.TS_OIDC_CLIENT_ID }}
+          audience: ${{ vars.TS_OIDC_AUDIENCE }}
+          tags: tag:ci
+          version: 1.94.2
+          sha256sum: c6f99a5d774c7783b56902188d69e9756fc3dddfb08ac6be4cb2585f3fecdc32
+          # No cache: a deploy job should not run binaries restored from a cache.
+          use-cache: "false"
+          ping: k3s-node
+
+      # The tailnet policy is the only thing between a CI job and the node's other ports.
+      # Prove it on every run: the API port answers, SSH and the kubelet do not.
+      - name: Tailnet least privilege (only 6443)
+        run: |
+          nc -z -w 5 k3s-node 6443
+          for port in 22 10250; do
+            if nc -z -w 5 k3s-node "$port"; then
+              echo "tag:ci reached k3s-node:$port; the tailnet policy is too open" >&2
+              exit 1
+            fi
+            echo "k3s-node:$port not reachable from tag:ci (as it should be)"
+          done
+
+      - name: Deploy to push
+        run: scripts/deploy-push.sh rendered

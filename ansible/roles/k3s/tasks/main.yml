@@ -80,6 +80,15 @@
     mode: "0600"
   notify: Restart k3s
 
+- name: K3s API authentication config (#39, GitHub Actions OIDC)
+  ansible.builtin.template:
+    src: authentication-config.yaml.j2
+    dest: /etc/rancher/k3s/authentication-config.yaml
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Restart k3s
+
 - name: K3s pod DNS upstream (#90)
   ansible.builtin.template:
     src: resolv.conf.j2
