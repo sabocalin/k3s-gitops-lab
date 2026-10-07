@@ -1,0 +1,39 @@
+# #36: where certificates come from. ClusterIssuers are cluster-scoped, so an Ingress in
+# any namespace can use them (annotation cert-manager.io/cluster-issuer).
+#
+# Staging first: same protocol, untrusted root ("(STAGING)"), rate limits about 10x
+# higher. A broken setup that retries against production can lock the name out for hours.
+#
+# No email: Let's Encrypt stopped sending expiry emails in 2025, and cert-manager renews
+# on its own (30 days before expiry by default).
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+spec:
+  acme:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    # The ACME account key; created by cert-manager on first use, in its own namespace.
+    privateKeySecretRef:
+      name: letsencrypt-staging-account
+    solvers:
+      # HTTP-01: Let's Encrypt fetches http://<host>/.well-known/acme-challenge/<token>.
+      # cert-manager answers with a short-lived solver pod plus an Ingress for that path,
+      # in the namespace of the certificate. Port 80 must be reachable from the internet.
+      - http01:
+          ingress:
+            ingressClassName: traefik
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    privateKeySecretRef:
+      name: letsencrypt-prod-account
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: traefik

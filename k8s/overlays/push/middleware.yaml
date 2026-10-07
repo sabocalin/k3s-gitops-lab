@@ -1,0 +1,11 @@
+# #36: Traefik middleware (Traefik's own CRD; plain Ingress has no redirect field). Sends
+# http:// requests to https:// with 301. An https request is left alone (same scheme).
+# Referenced from the Ingress as <namespace>-<name>@kubernetescrd.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: redirect-https
+spec:
+  redirectScheme:
+    scheme: https
+    permanent: true

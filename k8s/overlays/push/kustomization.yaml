@@ -9,6 +9,7 @@ resources:
   - namespace.yaml
   - ../../base
   - ingress.yaml # #35
+  - middleware.yaml # #36
 
 labels:
   # Not in selectors; also on the pods (includeTemplates). Which delivery path manages

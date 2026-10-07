@@ -1,0 +1,7 @@
+# #36: Let's Encrypt issuers. Apply after ../cert-manager is running: these are instances
+# of its CRDs, and its webhook validates them on create.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - clusterissuers.yaml
