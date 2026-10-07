@@ -46,7 +46,7 @@ personal`) and Tailscale up (`tsu up`); `scripts/lab.sh` refuses any other AWS a
 | `make plan` | read-only plan of the instance stack |
 | `make up` | build the node from nothing: plan, confirm, apply, Tailscale, Ansible |
 | `make down` | destroy the instance stack (the platform stack stays); plan and confirm first |
-| `make kubeconfig` | fetch the admin kubeconfig into `~/.kube` (a credential: run it yourself) |
+| `make kubeconfig` | fetch the admin kubeconfig into `~/.kube` (a credential: run it yourself). After `make up` (a new cluster), also refresh `k8s/ci/cluster-ca.crt` from it, or push deploys fail with an x509 error (#39) |
 | `make lint` | `terraform fmt`/`validate`, tflint, trivy: the same checks as CI, no AWS access |
 | `make test` / `make run` | the app (`app/`): ruff + pytest / serve on `localhost:8000` |
 | `make image` | build the container image `lab-api:dev` (linux/arm64) |
