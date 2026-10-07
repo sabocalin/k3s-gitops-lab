@@ -34,6 +34,7 @@ verified, and what surprised us. New notes start from [`_template.md`](_template
 | #32 | [PodDisruptionBudget minAvailable 2](32-pod-disruption-budget.md) | 3 |
 | #33 | [NetworkPolicy: default deny, allow Traefik to the app](33-network-policy.md) | 3 |
 | #34 | [HorizontalPodAutoscaler on CPU (min 3, max 5)](34-hpa.md) | 3 |
+| #35 | [Service + Ingress on K3s's built-in Traefik](35-ingress.md) | 3 |
 | #57 | [AI code review on pull requests](57-ai-review.md) | 0 |
 | #61 | [`make start / stop / extend / status / up / down`](61-make-lifecycle.md) | 1 |
 | #62 | [Nightly auto-stop (EventBridge Scheduler)](62-nightly-autostop.md) | 1 |

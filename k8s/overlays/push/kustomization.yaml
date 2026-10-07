@@ -8,6 +8,7 @@ namespace: push
 resources:
   - namespace.yaml
   - ../../base
+  - ingress.yaml # #35
 
 labels:
   # Not in selectors; also on the pods (includeTemplates). Which delivery path manages
