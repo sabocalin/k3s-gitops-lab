@@ -25,13 +25,18 @@ output "node_instance_profile_name" {
 }
 
 output "node_role_arn" {
-  description = "The node role (one SSM parameter + Session Manager)."
+  description = "The node role (two named SSM parameters + Session Manager)."
   value       = aws_iam_role.node.arn
 }
 
 output "tailscale_secret_parameter" {
   description = "Created out of band (aws ssm put-parameter); Terraform never holds its value."
   value       = local.tailscale_secret_parameter
+}
+
+output "duckdns_token_parameter" {
+  description = "Created out of band (aws ssm put-parameter, #36); Terraform never holds its value."
+  value       = local.duckdns_token_parameter
 }
 
 output "autostop_role_arn" {

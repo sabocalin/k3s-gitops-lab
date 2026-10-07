@@ -14,6 +14,8 @@ ACCOUNT_ID=466558795290
 PROJECT=k3s-gitops-lab
 NODE=k3s-node
 NODE_FQDN=k3s-node.taild18d72.ts.net
+# #36: the node points this at its public IP at every boot (ansible/roles/ddns).
+DDNS_NAME=k3s-gitops-lab.duckdns.org
 LEASE_NAME=$PROJECT-lease
 NIGHTLY_NAME=$PROJECT-nightly-stop
 TSU=${TSU:-tsu}
@@ -105,6 +107,19 @@ show_address() {
     say "no public IP (the instance is not running)"
   else
     say "public IP $ip, hostname $(printf %s "$ip" | tr . -).sslip.io (both change on every start)"
+    show_dns "$ip"
+  fi
+}
+
+# #36: what DuckDNS's own nameserver answers (no resolver cache in between).
+ddns_ip() { dig +short +time=3 +tries=1 "$DDNS_NAME" @ns1.duckdns.org 2>/dev/null | head -n 1; }
+ddns_points_at() { [ "$(ddns_ip)" = "$1" ]; }
+show_dns() { # <public ip>
+  current=$(ddns_ip)
+  if [ "$current" = "$1" ]; then
+    say "dns: $DDNS_NAME -> $current (current)"
+  else
+    say "dns: $DDNS_NAME -> ${current:-nothing} (STALE: the node updates it at boot)"
   fi
 }
 
@@ -219,6 +234,26 @@ cmd_start() {
   show_address "$id"
   guard_tailscale
   wait_k3s
+  wait_dns "$id"
+}
+
+wait_dns() { # <instance id>
+  ip=$(aws ec2 describe-instances --instance-ids "$1" \
+    --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
+  if wait_for 12 "$DDNS_NAME to point at $ip" ddns_points_at "$ip"; then
+    say "dns: $DDNS_NAME -> $ip"
+  else
+    say "dns: $DDNS_NAME still -> $(ddns_ip); check: ssh $NODE systemctl status duckdns-update"
+    return 0
+  fi
+  # K3s answering is not the app answering: Traefik restarts after a boot too. Resolve to
+  # the new IP explicitly, so the laptop's DNS cache cannot hide or fake the result.
+  if wait_for 12 "http://$DDNS_NAME/health" \
+    curl -sf --max-time 5 --resolve "$DDNS_NAME:80:$ip" "http://$DDNS_NAME/health"; then
+    say "app: http://$DDNS_NAME/health answers"
+  else
+    say "app: http://$DDNS_NAME/health not answering yet; check Traefik and the lab-api pods"
+  fi
 }
 
 cmd_stop() {

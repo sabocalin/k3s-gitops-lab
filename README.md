@@ -9,7 +9,7 @@ entirely from code, and then deliberately breaks it. Work is tracked on the
 ## Architecture
 
 ```
-internet ──80/443──▶ EC2 t4g.small (K3s)
+internet ──80/443──▶ k3s-gitops-lab.duckdns.org ─▶ EC2 t4g.small (K3s)
                        ├─ Traefik ingress ─▶ FastAPI (3 replicas)
                        ├─ cert-manager (Let's Encrypt)
                        └─ ArgoCD (core)
@@ -39,7 +39,7 @@ personal`) and Tailscale up (`tsu up`); `scripts/lab.sh` refuses any other AWS a
 
 | Command | What it does |
 |---|---|
-| `make start` | start the node, wait for K3s, print the public IP / sslip.io hostname, set a 3 h lease |
+| `make start` | start the node, set a 3 h lease, wait for K3s, then for `k3s-gitops-lab.duckdns.org` to point at the new IP and answer |
 | `make extend` | move the lease to 3 h from now (`LEASE_MINUTES=60` for another length) |
 | `make stop` | stop the node now and remove the lease |
 | `make status` | node state and address, lease, nightly stop, tailnet |
@@ -83,7 +83,7 @@ eu-central-1 on-demand list prices, before VAT; check the pricing pages.
 | EventBridge Scheduler (nightly auto-stop) | Free monthly invocations | Free |
 | AWS Budgets (one budget, no actions) | Free | Free |
 | GitHub Actions, GHCR | Free for public repos and public packages | — |
-| Tailscale, Grafana Cloud, Gemini API | Free personal / free tiers | — |
+| Tailscale, Grafana Cloud, Gemini API, DuckDNS | Free personal / free tiers | — |
 
 **Running model: stop when idle.** `make start` / `make stop` around each session. Two
 safety nets stop a forgotten node: a **session lease** (every `make start` schedules a stop
@@ -103,8 +103,9 @@ Notes:
   long-lived access keys anywhere (`aws login` locally, OIDC in CI), MFA on root and
   the admin user, and the budget alert.
 - **Public IPv4 costs only while the instance runs.** Stopping releases the
-  auto-assigned address (a new IP, and so a new sslip.io hostname, on every start). An
-  Elastic IP would keep the address stable but bills ~$3.60/month even while stopped.
+  auto-assigned address (a new IP on every start). An Elastic IP would keep the address
+  stable but bills ~$3.60/month even while stopped. Instead the node points the free
+  DuckDNS name `k3s-gitops-lab.duckdns.org` at its new IP at every boot (#36).
 - **Egress** comes from responses to users, Alloy shipping metrics and logs to
   Grafana Cloud, and Tailscale traffic. Pulling images from GHCR is inbound and
   free. Expected volume is far below 100 GB/month.
@@ -122,7 +123,7 @@ These are easy to add by accident and break the near-$0 target.
 | NAT Gateway | ~$33/month + $0.045/GB | Public subnet, instance has its own public IP |
 | EKS control plane | ~$73/month | K3s |
 | Idle Elastic IP | ~$3.60/month | Auto-assigned public IP |
-| Route 53 hosted zone | $0.50/month | `<ip>.sslip.io` wildcard DNS |
+| Route 53 hosted zone | $0.50/month | DuckDNS (`k3s-gitops-lab.duckdns.org`, updated at boot) |
 | Customer-managed KMS key | $1/month | AWS-managed keys (`aws/ssm`, `aws/s3`) |
 | VPC interface endpoints | ~$7/month per AZ | Public AWS endpoints over the instance's public IP |
 

@@ -1,0 +1,30 @@
+#!/bin/sh
+# Managed by Ansible (k3s-gitops-lab, #36). Point {{ ddns_subdomain }}.duckdns.org at this
+# node's public IPv4. Run at every boot by duckdns-update.service.
+#
+# The token goes SSM -> shell variable -> curl's stdin. It is never written to disk, never
+# on a command line (visible in ps), and never printed.
+set -eu
+
+imds=http://169.254.169.254/latest
+# IMDSv2: a session token first (PUT), then the metadata with it.
+session=$(curl -sf --max-time 5 -X PUT -H 'X-aws-ec2-metadata-token-ttl-seconds: 60' "$imds/api/token")
+ip=$(curl -sf --max-time 5 -H "X-aws-ec2-metadata-token: $session" "$imds/meta-data/public-ipv4")
+case $ip in
+  *[!0-9.]* | '') echo "duckdns: no public IPv4 from instance metadata: '$ip'" >&2; exit 1 ;;
+esac
+
+token=$(/snap/bin/aws ssm get-parameter --region {{ ddns_region }} --with-decryption \
+  --name {{ ddns_token_parameter }} --query Parameter.Value --output text)
+
+# printf is a shell builtin (no process, nothing in ps); curl reads its config from stdin.
+answer=$(printf 'url = "https://www.duckdns.org/update?domains=%s&token=%s&ip=%s"\n' \
+  {{ ddns_subdomain }} "$token" "$ip" | curl -sf --max-time 15 --config -)
+unset token
+
+# DuckDNS answers "OK" or "KO" (bad token or name) with HTTP 200 either way.
+if [ "$answer" != OK ]; then
+  echo "duckdns: update refused: '$answer'" >&2
+  exit 1
+fi
+echo "duckdns: {{ ddns_subdomain }}.duckdns.org -> $ip"

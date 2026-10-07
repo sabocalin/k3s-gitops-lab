@@ -4,3 +4,4 @@
   roles:
     - swap
     - k3s
+    - ddns # #36
