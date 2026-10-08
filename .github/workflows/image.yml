@@ -4,7 +4,8 @@
 #   pull_request  build + vulnerability scan + smoke test; this job cannot write packages
 #   push to main  the same, then push ghcr.io/sabocalin/k3s-gitops-lab/lab-api:<sha>
 #                 with signed build provenance and an SBOM attestation (#24)
-#                 and a keyless cosign signature (#25)
+#                 and a keyless cosign signature (#25), then a PR that moves the gitops
+#                 overlay to it (#41)
 #
 # Plain `docker buildx` (preinstalled on the runner) instead of docker/build-push-action:
 # one less action to trust, and every flag is visible here.
@@ -86,6 +87,8 @@ jobs:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
+    outputs:
+      digest: ${{ steps.push.outputs.digest }} # for gitops-bump (#41)
     permissions:
       contents: read
       packages: write # push the image and its attestations to ghcr.io/<owner>/...
@@ -178,3 +181,46 @@ jobs:
       - name: Log out of GHCR
         if: always()
         run: docker logout ghcr.io
+
+  # #41: point the gitops overlay at the image just published, through a PR that merges
+  # itself once the required checks pass. A GitHub App opens it: a PR opened with the job's
+  # own GITHUB_TOKEN would not start the required check workflows (GitHub's guard against
+  # workflows triggering workflows), so it could never merge.
+  bump-gitops:
+    name: gitops-bump
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # main only; also where the App's private key lives (environment secret).
+    environment: production
+    permissions:
+      contents: read # checkout; every write goes through the App's token
+    steps:
+      # The latest main (not the build commit): the bump PR is based on what main is now.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+
+      # Deploy only what image.yml signed: checked again here, from the registry.
+      - name: Verify the image signature
+        env:
+          DIGEST: ${{ needs.publish.outputs.digest }}
+        run: scripts/verify-image.sh "$IMAGE@$DIGEST"
+
+      # A token for this repository only, narrowed to the two permissions the bump needs,
+      # valid for an hour and revoked when the job ends.
+      - name: GitHub App token
+        id: app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.BOT_APP_CLIENT_ID }}
+          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Open the gitops bump PR
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          DIGEST: ${{ needs.publish.outputs.digest }}
+        run: scripts/bump-gitops-image.sh "$IMAGE@$DIGEST"
