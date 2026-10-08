@@ -19,7 +19,8 @@
 # the overlay, on an allowlist of Exact paths (#35), every host under TLS from a known
 # ClusterIssuer (#36); a default-deny
 # NetworkPolicy plus one letting Traefik's pods (kube-system) reach the app (#33). Across
-# overlays: no shared namespace. Then k8s/platform/* (#36): see the end of this file.
+# overlays: no shared namespace. Then k8s/platform/* (#36) and the Argo CD Applications
+# (#42): see the end of this file.
 # Needs yq (mikefarah, v4) and jq.
 set -eu
 
@@ -233,6 +234,50 @@ for dir in k8s/platform/*/; do
     'select(.kind == "Namespace" and .metadata.labels["pod-security.kubernetes.io/enforce"] != "restricted") | .metadata.name')
   [ -z "$unrestricted" ] || problem "platform/$name: namespaces not enforcing Pod Security 'restricted': $unrestricted"
   printf 'ok: platform/%s -> %s (%s objects)\n' "$name" "$file" "$(printf '%s\n' "$objects" | wc -l | tr -d ' ')"
+done
+
+# #42: Argo CD Applications defined under k8s/platform. Each one deploys an overlay of this
+# repository at main into the namespace of the same name, with automated prune and
+# selfHeal, inside an AppProject also defined here that allows that namespace only, this
+# repository only, nothing cluster-scoped, and exactly the kinds the overlay renders (no
+# wildcards): a kind added to the overlay without the project, or the reverse, fails here
+# instead of failing the sync in the cluster.
+repo_url=https://github.com/sabocalin/k3s-gitops-lab.git
+argo=$(yq -o json -I0 '.' "$out"/platform/*.yaml | jq -c 'select(.kind == "Application" or .kind == "AppProject")')
+for app in $(printf '%s\n' "$argo" | jq -r 'select(.kind == "Application") | .metadata.name'); do
+  spec=$(printf '%s\n' "$argo" | jq -c --arg a "$app" 'select(.kind == "Application" and .metadata.name == $a) | .spec')
+  overlay=$(printf '%s' "$spec" | jq -r '.source.path | sub("^k8s/overlays/"; "")')
+  project=$(printf '%s\n' "$argo" | jq -c --arg p "$(printf '%s' "$spec" | jq -r .project)" 'select(.kind == "AppProject" and .metadata.name == $p)')
+  if [ -z "$project" ]; then
+    problem "Application/$app: AppProject $(printf '%s' "$spec" | jq -r .project) is not defined in k8s/platform"
+    continue
+  fi
+  wrong=$(jq -rn --argjson s "$spec" --argjson p "$project" --arg repo "$repo_url" --arg o "$overlay" '
+    [ (if $s.source.repoURL != $repo then "repoURL is not \($repo)" else empty end),
+      (if $s.source.targetRevision != "main" then "targetRevision is not main" else empty end),
+      (if ($s.source.path | startswith("k8s/overlays/") | not) then "path is not under k8s/overlays/" else empty end),
+      (if $s.destination.namespace != $o then "destination namespace is not \($o)" else empty end),
+      (if [$s.syncPolicy.automated.prune, $s.syncPolicy.automated.selfHeal] != [true, true] then "automated prune and selfHeal are not both on" else empty end),
+      (if $p.spec.sourceRepos != [$repo] then "AppProject sourceRepos is not exactly [\($repo)]" else empty end),
+      (if ($p.spec.destinations | map(.namespace)) != [$o] then "AppProject destinations are not exactly [\($o)]" else empty end),
+      (if ($p.spec.clusterResourceWhitelist // []) != [] then "AppProject allows cluster-scoped kinds" else empty end),
+      (if ($p.spec.namespaceResourceWhitelist // [] | any(.group == "*" or .kind == "*")) then "AppProject whitelist has a wildcard" else empty end)
+    ] | join("; ")')
+  [ -z "$wrong" ] || problem "Application/$app: $wrong"
+  if [ ! -f "$out/$overlay.yaml" ]; then
+    problem "Application/$app: no rendered overlay $overlay"
+    continue
+  fi
+  # group/kind of every object in the overlay (core group: ""), against the whitelist.
+  mismatch=$(yq -o json -I0 '.' "$out/$overlay.yaml" | jq -rs --argjson p "$project" '
+    ([.[] | {group: (.apiVersion | if contains("/") then split("/")[0] else "" end), kind}] | unique) as $have
+    | ($p.spec.namespaceResourceWhitelist // [] | map({group, kind}) | unique) as $allowed
+    | [ ($have - $allowed)[] | "not allowed by the AppProject: \(.group)/\(.kind)" ]
+      + [ ($allowed - $have)[] | "allowed but not in the overlay: \(.group)/\(.kind)" ]
+    | join("; ")')
+  [ -z "$mismatch" ] || problem "Application/$app: $mismatch"
+  [ -z "$wrong$mismatch" ] || continue
+  printf 'ok: Application/%s -> overlay %s, AppProject %s\n' "$app" "$overlay" "$(printf '%s' "$project" | jq -r .metadata.name)"
 done
 
 if [ "$problems" -gt 0 ]; then

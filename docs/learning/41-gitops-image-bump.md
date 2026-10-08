@@ -88,9 +88,20 @@ Before the merge (the job runs only on `main`, after a publish):
 | `sh -n scripts/bump-gitops-image.sh` | ok |
 | Repository settings via the API | `allow_auto_merge=true`, `delete_branch_on_merge=true`, squash only |
 
-This PR changes `image.yml`, so its merge triggers a build, a publish, and the bot's first
-bump PR. That run (the token, the signed commit, the PR merging itself) is recorded in a
-follow-up.
+This PR (#109) changes `image.yml`, so its merge triggered a build, a publish, and the
+bot's first bump PR. After the merge (image run 37770533048, recorded with #42):
+
+| Check | Result |
+|---|---|
+| `image-publish` → `gitops-bump` | publish 11:30:52–11:31:57 UTC, bump 11:32:03–11:32:23 |
+| Bump PR | #110, opened by `app/k3s-gitops-lab-bot`, branch `bot/gitops-image-9186280ad5e3` |
+| Bot commit `dd60f49` | author `k3s-gitops-lab-bot[bot]`, **Verified** (`valid`) |
+| Required checks on #110 | all green; auto-merge squashed it **38 s** after it opened (11:32:17 → 11:32:55) |
+| Merge commit `4db8663` | committer GitHub, **Verified** |
+| Head branch | deleted (`404` on the branch API) |
+| Workflows on `4db8663` | k8s, zizmor, terraform-lint, app-ci; **no `image.yml` run**, so no loop |
+| `make k8s` on the new `main` | OK; the gitops overlay pins `sha256:9186280a…` |
+| Deployed by Argo CD (#42) | `gitops` runs 3/3 pods on `9186280a…`, synced from `4db8663` |
 
 ## Gotchas
 - **`GITHUB_TOKEN` can't open a PR that ever merges here**, because its events start no

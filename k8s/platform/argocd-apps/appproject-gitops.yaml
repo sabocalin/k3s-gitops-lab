@@ -1,0 +1,27 @@
+# #42: the fence around the gitops Application. The application-controller itself may do
+# anything in the cluster (ClusterRole argocd-application-controller: every verb on every
+# resource); the AppProject is what Argo CD checks before every sync. Core ships no
+# "default" project (the API server would create it), and that one would allow everything.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: gitops
+spec:
+  description: lab-api in the gitops namespace, from this repository only
+  # Only this repository, over HTTPS. It is public, so no credentials are stored.
+  sourceRepos:
+    - https://github.com/sabocalin/k3s-gitops-lab.git
+  # Only the gitops namespace of the cluster Argo CD runs in.
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: gitops
+  # Nothing cluster-scoped. The Namespace and its guardrails (k8s/namespaces/gitops) stay
+  # admin-owned, as for the push path (#38).
+  clusterResourceWhitelist: []
+  # Exactly the kinds k8s/overlays/gitops renders (scripts/render-k8s.sh checks this), the
+  # same set the push deployer's Role may write. No NetworkPolicy, quota, RBAC or Secrets.
+  namespaceResourceWhitelist:
+    - {group: apps, kind: Deployment}
+    - {group: "", kind: Service}
+    - {group: policy, kind: PodDisruptionBudget}
+    - {group: autoscaling, kind: HorizontalPodAutoscaler}
