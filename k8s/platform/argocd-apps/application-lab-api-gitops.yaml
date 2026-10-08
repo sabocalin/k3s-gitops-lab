@@ -1,0 +1,36 @@
+# #42: the pull path. Argo CD renders k8s/overlays/gitops at the tip of main and keeps the
+# gitops namespace equal to it: new commits are applied (automated), objects removed from
+# git are deleted (prune), and changes made in the cluster are reverted (selfHeal).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: lab-api-gitops
+  # No resources-finalizer: deleting this Application leaves the workload running
+  # (orphaned) instead of deleting everything it deployed.
+spec:
+  project: gitops
+  source:
+    repoURL: https://github.com/sabocalin/k3s-gitops-lab.git
+    # A branch, not a commit: main is the desired state; the bot moves the image (#41).
+    # Argo CD polls it every 3 minutes (the default timeout.reconciliation, plus jitter).
+    targetRevision: main
+    path: k8s/overlays/gitops
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: gitops
+  syncPolicy:
+    automated:
+      # Delete objects that git no longer has (only ones Argo CD tracks; the guardrails
+      # from k8s/namespaces/gitops carry no tracking annotation and are left alone).
+      prune: true
+      # Sync when the live state drifts, not only when git changes.
+      selfHeal: true
+    syncOptions:
+      # The default, written down: the Namespace is admin-owned (#38), never created here.
+      - CreateNamespace=false
+      # Refuse to take over an object another Application already tracks.
+      - FailOnSharedResource=true
+    # Without this, Argo CD does not retry a failed automated sync of the same commit.
+    retry:
+      limit: 5
+      backoff: {duration: 10s, factor: 2, maxDuration: 3m}

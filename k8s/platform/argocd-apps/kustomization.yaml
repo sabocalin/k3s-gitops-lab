@@ -1,0 +1,12 @@
+# #42: what Argo CD deploys. Apply after ../argocd is running: these are instances of its
+# CRDs. Applied by an admin for now (a change here needs a re-apply); from #43 a root
+# Application syncs this directory, so Argo CD manages its own Applications too.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Argo CD core only watches Applications and AppProjects in its own namespace.
+namespace: argocd
+
+resources:
+  - appproject-gitops.yaml
+  - application-lab-api-gitops.yaml

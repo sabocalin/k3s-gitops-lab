@@ -10,13 +10,14 @@ entirely from code, and then deliberately breaks it. Work is tracked on the
 
 ```
 internet ──80/443──▶ k3s-gitops-lab.duckdns.org ─▶ EC2 t4g.medium (K3s)
-                       ├─ Traefik ingress ─▶ FastAPI (3 replicas)
+                       ├─ Traefik ingress ─▶ FastAPI, namespace push (3-5 replicas)
                        ├─ cert-manager (Let's Encrypt)
-                       └─ ArgoCD (core)
+                       └─ ArgoCD (core) ─▶ FastAPI, namespace gitops (synced from main)
 
 admin ──Tailscale──▶ SSH + Kubernetes API   (no public 22 or 6443)
 GitHub Actions ──OIDC──▶ AWS (no stored keys)
 GitHub Actions ──Tailscale──▶ Kubernetes API (push deploys)
+GitHub Actions ──bot PR──▶ main (new image digest) ◀──polls── ArgoCD (pull deploys)
 ```
 
 - Address ranges: VPC `10.42.0.0/16`, pods `10.52.0.0/16`, Services `10.53.0.0/16`. They must not overlap; an Ansible guard checks this (#90).
@@ -30,7 +31,8 @@ GitHub Actions ──Tailscale──▶ Kubernetes API (push deploys)
   | `terraform/instance` | the EC2 instance | stopped when idle, destroyed and rebuilt weekly |
 - Images: built natively for arm64 in GitHub Actions, pushed to GHCR, signed.
 - Deploys: two paths to separate namespaces, push (`kubectl apply` from Actions)
-  and pull (ArgoCD watching this repo).
+  and pull (ArgoCD watching this repo; `k8s/platform/argocd-apps`, applied after
+  `k8s/platform/argocd`).
 
 ## Daily use
 
