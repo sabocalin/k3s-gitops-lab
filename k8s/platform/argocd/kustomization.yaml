@@ -1,0 +1,59 @@
+# #40: Argo CD "core": the GitOps engine without its API server, web UI or SSO (Dex).
+# Components: application-controller (compares git with the cluster and syncs), repo-server
+# (clones git, renders Kustomize), redis (cache), applicationset-controller (generates
+# Applications). Driven with kubectl and Application objects (#42). Applied by hand for
+# now; Argo CD manages itself from #43.
+#
+# vendor/argocd-core-install-v3.5.3.yaml is upstream's manifests/core-install.yaml at the
+# v3.5.3 tag's commit c9c369efcc5b2a0bd720803f8d14a1c3eaddf579, unmodified (the install
+# manifests are not release assets). v3.5.4 was a day old when pinned (7-day cooldown).
+# Its sha256 is recorded in vendor/SHA256SUMS and checked by scripts/render-k8s.sh.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Every namespaced object lands here (upstream sets none). Cluster-scoped objects (the
+# controller's ClusterRole and binding, CRDs) are unaffected.
+namespace: argocd
+
+resources:
+  - namespace.yaml
+  - vendor/argocd-core-install-v3.5.3.yaml
+
+images:
+  # Verified keyless: signed by GitHub Actions in argoproj/argo-cd, workflow
+  # image-reuse.yaml at refs/tags/v3.5.3, logged in Rekor:
+  #   cosign verify --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  #     --certificate-identity-regexp \
+  #     '^https://github.com/argoproj/argo-cd/.github/workflows/image-reuse.yaml@refs/tags/v3\.5\.3$' \
+  #     quay.io/argoproj/argocd@<digest>
+  - name: quay.io/argoproj/argocd
+    digest: sha256:dd3f47d5a5e4da563a7a398506e892481b358a7cec50abdf320c71aa55904bfa
+  # Docker Official Image, mirrored to ECR Public; no cosign signature to verify. Pinned by
+  # digest; the same index digest is served by Docker Hub and ECR Public.
+  - name: public.ecr.aws/docker/library/redis
+    digest: sha256:08ad0b1d280850169a790dba1393ff7a90aef951fc19632cf4d3ce4f78e679ba
+
+patches:
+  # Upstream sets no requests or limits. Starting points, adjusted from measurements in
+  # docs/learning/40-argocd-core.md. Memory limits keep a leak from taking the node down;
+  # the controller and repo-server get more CPU (diffing, git, kustomize builds).
+  - target: {kind: StatefulSet, name: argocd-application-controller}
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/resources
+        value: {requests: {cpu: 20m, memory: 128Mi}, limits: {cpu: 500m, memory: 384Mi}}
+  - target: {kind: Deployment, name: argocd-repo-server}
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/resources
+        value: {requests: {cpu: 10m, memory: 64Mi}, limits: {cpu: 500m, memory: 384Mi}}
+  - target: {kind: Deployment, name: argocd-applicationset-controller}
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/resources
+        value: {requests: {cpu: 10m, memory: 32Mi}, limits: {cpu: 200m, memory: 128Mi}}
+  - target: {kind: Deployment, name: argocd-redis}
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/resources
+        value: {requests: {cpu: 10m, memory: 16Mi}, limits: {cpu: 200m, memory: 128Mi}}

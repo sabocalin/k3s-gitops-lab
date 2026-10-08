@@ -9,7 +9,7 @@ entirely from code, and then deliberately breaks it. Work is tracked on the
 ## Architecture
 
 ```
-internet ──80/443──▶ k3s-gitops-lab.duckdns.org ─▶ EC2 t4g.small (K3s)
+internet ──80/443──▶ k3s-gitops-lab.duckdns.org ─▶ EC2 t4g.medium (K3s)
                        ├─ Traefik ingress ─▶ FastAPI (3 replicas)
                        ├─ cert-manager (Let's Encrypt)
                        └─ ArgoCD (core)
@@ -74,7 +74,7 @@ eu-central-1 on-demand list prices, before VAT; check the pricing pages.
 
 | Resource | Free allowance | Cost |
 |---|---|---|
-| EC2 `t4g.small` | 750 h/month free trial until **2026-12-31** (every customer) | $0 until then; ~$0.019/h after (~$14/month 24/7) |
+| EC2 `t4g.medium` (since #40; `t4g.small` was too small for Argo CD) | none (the free trial covers `t4g.small` only) | ~$0.0384/h: ~$1.54/month at 40 h, ~$28/month 24/7 |
 | EBS gp3, 12 GB | none | ~$1.14/month, **billed even while the instance is stopped** |
 | Public IPv4 address | none | ~$0.005/h (~$3.60/month) while attached; $0 while stopped |
 | Data transfer out | 100 GB/month | ~$0.09/GB above that |
@@ -111,7 +111,7 @@ Notes:
   free. Expected volume is far below 100 GB/month.
 - **Guardrail:** a $5/month AWS Budgets alert, on actual spend ≥ 80% and forecasted
   spend ≥ 100%. Any alert means something unplanned is running.
-- **2026-12-31:** the `t4g.small` trial ends; decide stop-when-idle vs 24/7 (#53).
+- **2026-12-31:** the `t4g.small` trial ends (no longer used since #40); decide stop-when-idle vs 24/7 (#53).
 
 ## Never create
 
