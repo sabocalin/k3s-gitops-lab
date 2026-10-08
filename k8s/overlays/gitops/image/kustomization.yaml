@@ -1,0 +1,8 @@
+# #41: which build runs in "gitops". Owned by the bot: after every image publish, CI runs
+# `kustomize edit set image` here and opens a PR (scripts/bump-gitops-image.sh). Kept in
+# its own Component so the edit (kustomize reformats the file it edits) touches only this.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+images:
+- digest: sha256:7952a1567b7da01e15b033fb407d3a0ecb50670dbb647b18eca7fa13254d5279
+  name: ghcr.io/sabocalin/k3s-gitops-lab/lab-api
