@@ -1,0 +1,12 @@
+# #40: upstream's install manifest expects this namespace to exist already.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: argocd
+  labels:
+    # Pod Security "restricted", as for every namespace here (#31). Argo CD's own pods
+    # comply (non-root, no privilege escalation, all capabilities dropped, seccomp).
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: v1.36
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: v1.36

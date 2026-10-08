@@ -90,6 +90,13 @@ starts it again; the disk, the cluster and its certificate stay. Cost:
 | ~40 h/month | **$0 until 2026-12-31** (trial), then $0.77 | $1.54 |
 | 24/7 | $14.01 | $28.03 |
 
+## Outcome (#40)
+**Gate A failed on `t4g.small`**: with Argo CD running, 297 Mi available, swap 762–853 Mi,
+memory stall (PSI `some avg300`) about 30%. Argo CD was scaled to 0 and the node resized to
+**`t4g.medium`** (in place, from a saved plan). There, Gate A passed: 2250 Mi available,
+swap 0, PSI 0, no OOM kills; Argo CD's pods use 182 Mi. Details:
+[40-argocd-core.md](40-argocd-core.md).
+
 ## Verification
 - Measurements: `free -m`, `/proc/meminfo`, `/proc/pressure/memory`, `ps -eo rss,comm`
   on the node over Tailscale SSH; `kubectl top node`, `kubectl top pods -A`,

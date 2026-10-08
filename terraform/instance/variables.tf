@@ -17,9 +17,12 @@ variable "availability_zone" {
 }
 
 variable "instance_type" {
-  description = "t4g.small: 2 vCPU (burstable), 2 GiB, arm64; free trial until 2026-12-31."
+  # #40: t4g.small (2 GiB, free trial) thrashed with Argo CD running: swap ~850 Mi, memory
+  # PSI ~30%, the #47 gate failed. t4g.medium: 4 GiB, ~$0.0384/h (not in the trial).
+  # Changing the type is an in-place stop, modify, start; the disk and cluster stay.
+  description = "t4g.medium: 2 vCPU (burstable), 4 GiB, arm64 (#40, docs/learning/47-memory-headroom.md)."
   type        = string
-  default     = "t4g.small"
+  default     = "t4g.medium"
 }
 
 variable "root_volume_gb" {
