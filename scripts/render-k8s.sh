@@ -20,7 +20,7 @@
 # ClusterIssuer (#36); a default-deny
 # NetworkPolicy plus one letting Traefik's pods (kube-system) reach the app (#33). Across
 # overlays: no shared namespace. Then k8s/platform/* (#36) and the Argo CD Applications
-# (#42): see the end of this file.
+# and AppProjects (#42, #43): see the end of this file.
 # Needs yq (mikefarah, v4) and jq.
 set -eu
 
@@ -236,49 +236,77 @@ for dir in k8s/platform/*/; do
   printf 'ok: platform/%s -> %s (%s objects)\n' "$name" "$file" "$(printf '%s\n' "$objects" | wc -l | tr -d ' ')"
 done
 
-# #42: Argo CD Applications defined under k8s/platform. Each one deploys an overlay of this
-# repository at main into the namespace of the same name, with automated prune and
-# selfHeal, inside an AppProject also defined here that allows that namespace only, this
-# repository only, nothing cluster-scoped, and exactly the kinds the overlay renders (no
-# wildcards): a kind added to the overlay without the project, or the reverse, fails here
-# instead of failing the sync in the cluster.
+# #42, #43: Argo CD Applications and AppProjects defined under k8s/platform.
+# Per Application: from this repository at main, automated prune and selfHeal on, a path
+# that is an overlay (k8s/overlays/<name>, deployed into namespace <name>) or a platform
+# component (k8s/platform/<name>), in an AppProject defined here.
+# Per AppProject, against everything its Applications render (a kind is cluster-scoped
+# when the rendered object has no namespace): sourceRepos is exactly this repository;
+# destinations are exactly the namespaces used, on this cluster; clusterResourceWhitelist
+# and namespaceResourceWhitelist equal the kinds used, no more, no fewer, no wildcards.
+# A new kind or namespace in a component is then a failed check and a reviewed project
+# change, instead of a sync that fails in the cluster, or a fence wider than needed.
 repo_url=https://github.com/sabocalin/k3s-gitops-lab.git
 argo=$(yq -o json -I0 '.' "$out"/platform/*.yaml | jq -c 'select(.kind == "Application" or .kind == "AppProject")')
+used=$(mktemp)
 for app in $(printf '%s\n' "$argo" | jq -r 'select(.kind == "Application") | .metadata.name'); do
   spec=$(printf '%s\n' "$argo" | jq -c --arg a "$app" 'select(.kind == "Application" and .metadata.name == $a) | .spec')
-  overlay=$(printf '%s' "$spec" | jq -r '.source.path | sub("^k8s/overlays/"; "")')
-  project=$(printf '%s\n' "$argo" | jq -c --arg p "$(printf '%s' "$spec" | jq -r .project)" 'select(.kind == "AppProject" and .metadata.name == $p)')
-  if [ -z "$project" ]; then
-    problem "Application/$app: AppProject $(printf '%s' "$spec" | jq -r .project) is not defined in k8s/platform"
+  src=$(printf '%s' "$spec" | jq -r '.source.path')
+  case $src in
+    k8s/overlays/*) rendered=$out/${src#k8s/overlays/}.yaml; want_ns=${src#k8s/overlays/} ;;
+    k8s/platform/*) rendered=$out/platform/${src#k8s/platform/}.yaml; want_ns="" ;;
+    *) problem "Application/$app: path $src is not k8s/overlays/<name> or k8s/platform/<name>"; continue ;;
+  esac
+  if [ ! -f "$rendered" ]; then
+    problem "Application/$app: $src was not rendered"
     continue
   fi
-  wrong=$(jq -rn --argjson s "$spec" --argjson p "$project" --arg repo "$repo_url" --arg o "$overlay" '
+  wrong=$(jq -rn --argjson s "$spec" --arg repo "$repo_url" --arg ns "$want_ns" '
     [ (if $s.source.repoURL != $repo then "repoURL is not \($repo)" else empty end),
       (if $s.source.targetRevision != "main" then "targetRevision is not main" else empty end),
-      (if ($s.source.path | startswith("k8s/overlays/") | not) then "path is not under k8s/overlays/" else empty end),
-      (if $s.destination.namespace != $o then "destination namespace is not \($o)" else empty end),
-      (if [$s.syncPolicy.automated.prune, $s.syncPolicy.automated.selfHeal] != [true, true] then "automated prune and selfHeal are not both on" else empty end),
-      (if $p.spec.sourceRepos != [$repo] then "AppProject sourceRepos is not exactly [\($repo)]" else empty end),
-      (if ($p.spec.destinations | map(.namespace)) != [$o] then "AppProject destinations are not exactly [\($o)]" else empty end),
-      (if ($p.spec.clusterResourceWhitelist // []) != [] then "AppProject allows cluster-scoped kinds" else empty end),
-      (if ($p.spec.namespaceResourceWhitelist // [] | any(.group == "*" or .kind == "*")) then "AppProject whitelist has a wildcard" else empty end)
+      (if $s.destination.server != "https://kubernetes.default.svc" then "destination is not this cluster" else empty end),
+      (if $ns != "" and $s.destination.namespace != $ns then "destination namespace is not \($ns)" else empty end),
+      (if [$s.syncPolicy.automated.prune, $s.syncPolicy.automated.selfHeal] != [true, true] then "automated prune and selfHeal are not both on" else empty end)
     ] | join("; ")')
   [ -z "$wrong" ] || problem "Application/$app: $wrong"
-  if [ ! -f "$out/$overlay.yaml" ]; then
-    problem "Application/$app: no rendered overlay $overlay"
+  # What this Application deploys, as {project, app, group, kind, ns}: one line per kind.
+  # The destination namespace counts as used even with no object in it (cluster-issuers).
+  yq -o json -I0 '.' "$rendered" | jq -c --argjson s "$spec" --arg a "$app" '
+    {project: $s.project, app: $a,
+     group: (.apiVersion | if contains("/") then split("/")[0] else "" end), kind,
+     ns: (.metadata.namespace // "")}' >>"$used"
+  jq -cn --argjson s "$spec" --arg a "$app" '{project: $s.project, app: $a, ns: $s.destination.namespace}' >>"$used"
+done
+for project in $(jq -r '.project' "$used" | sort -u); do
+  spec=$(printf '%s\n' "$argo" | jq -c --arg p "$project" 'select(.kind == "AppProject" and .metadata.name == $p) | .spec')
+  if [ -z "$spec" ]; then
+    problem "AppProject/$project: used by $(jq -r --arg p "$project" 'select(.project == $p) | .app' "$used" | sort -u | paste -sd, -) but not defined in k8s/platform"
     continue
   fi
-  # group/kind of every object in the overlay (core group: ""), against the whitelist.
-  mismatch=$(yq -o json -I0 '.' "$out/$overlay.yaml" | jq -rs --argjson p "$project" '
-    ([.[] | {group: (.apiVersion | if contains("/") then split("/")[0] else "" end), kind}] | unique) as $have
-    | ($p.spec.namespaceResourceWhitelist // [] | map({group, kind}) | unique) as $allowed
-    | [ ($have - $allowed)[] | "not allowed by the AppProject: \(.group)/\(.kind)" ]
-      + [ ($allowed - $have)[] | "allowed but not in the overlay: \(.group)/\(.kind)" ]
-    | join("; ")')
-  [ -z "$mismatch" ] || problem "Application/$app: $mismatch"
-  [ -z "$wrong$mismatch" ] || continue
-  printf 'ok: Application/%s -> overlay %s, AppProject %s\n' "$app" "$overlay" "$(printf '%s' "$project" | jq -r .metadata.name)"
+  wrong=$(jq -rs --argjson p "$spec" --arg repo "$repo_url" --arg name "$project" '
+    map(select(.project == $name)) as $u
+    | def set(f): map(f) | unique;
+      def gk: {group, kind};
+      def show: map(if type == "object" then "\(.group)/\(.kind)" else . end) | join(", ");
+      def cmp(what; have; allowed):
+        [ (if (have - allowed) != [] then "\(what) missing: \((have - allowed) | show)" else empty end),
+          (if (allowed - have) != [] then "\(what) not needed: \((allowed - have) | show)" else empty end) ];
+    ($u | map(select(.kind != null))) as $objs
+    | [ (if $p.sourceRepos != [$repo] then "sourceRepos is not exactly [\($repo)]" else empty end),
+        (if ($p.destinations | any(.server != "https://kubernetes.default.svc")) then "a destination is not this cluster" else empty end),
+        (if ([$p.clusterResourceWhitelist[]?, $p.namespaceResourceWhitelist[]?] | any(.group == "*" or .kind == "*"))
+           or ($p.destinations | any(.namespace == "*")) then "a wildcard" else empty end),
+        cmp("destinations"; $u | map(select(.ns != "")) | set(.ns); $p.destinations // [] | set(.namespace)),
+        cmp("clusterResourceWhitelist"; $objs | map(select(.ns == "")) | set(gk); $p.clusterResourceWhitelist // [] | set(gk)),
+        cmp("namespaceResourceWhitelist"; $objs | map(select(.ns != "")) | set(gk); $p.namespaceResourceWhitelist // [] | set(gk))
+      ] | flatten | join("; ")' "$used")
+  if [ -n "$wrong" ]; then
+    problem "AppProject/$project: $wrong"
+  else
+    printf 'ok: AppProject/%s -> %s\n' "$project" "$(jq -r --arg p "$project" 'select(.project == $p) | .app' "$used" | sort -u | paste -sd, -)"
+  fi
 done
+rm -f "$used"
 
 if [ "$problems" -gt 0 ]; then
   echo "render: $problems problem(s)" >&2

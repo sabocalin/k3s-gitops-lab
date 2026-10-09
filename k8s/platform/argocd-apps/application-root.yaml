@@ -1,0 +1,30 @@
+# #43: app-of-apps. The root Application syncs this directory: every Application and
+# AppProject, including itself. Applied once by hand to bootstrap a cluster
+# (kubectl apply -k k8s/platform/argocd-apps); after that, git is the only way to change
+# what Argo CD deploys, and a kubectl edit of any Application is reverted like any drift.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  # No resources-finalizer, here or on any child: deleting an Application leaves what it
+  # deployed in place. A finalizer on root would cascade to Argo CD and cert-manager.
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/sabocalin/k3s-gitops-lab.git
+    targetRevision: main
+    path: k8s/platform/argocd-apps
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      # An Application file removed from git: the Application is deleted (its workload,
+      # with no finalizer, is orphaned, not deleted).
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - FailOnSharedResource=true
+    retry:
+      limit: 5
+      backoff: {duration: 10s, factor: 2, maxDuration: 3m}

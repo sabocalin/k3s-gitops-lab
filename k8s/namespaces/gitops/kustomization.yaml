@@ -1,6 +1,7 @@
-# #38: the "gitops" namespace and its guardrails, applied by an admin (later ArgoCD, #43),
-# before k8s/overlays/gitops. Pod Security level, quota, limits and network policy are set
-# here, out of reach of whoever deploys the app.
+# #38: the "gitops" namespace and its guardrails, applied by an admin before
+# k8s/overlays/gitops (not by Argo CD yet: see docs/learning/43-app-of-apps.md). Pod
+# Security level, quota, limits and network policy are set here, out of reach of whoever
+# deploys the app.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 

@@ -31,8 +31,9 @@ GitHub Actions ──bot PR──▶ main (new image digest) ◀──polls─�
   | `terraform/instance` | the EC2 instance | stopped when idle, destroyed and rebuilt weekly |
 - Images: built natively for arm64 in GitHub Actions, pushed to GHCR, signed.
 - Deploys: two paths to separate namespaces, push (`kubectl apply` from Actions)
-  and pull (ArgoCD watching this repo; `k8s/platform/argocd-apps`, applied after
-  `k8s/platform/argocd`).
+  and pull (ArgoCD watching this repo). ArgoCD also manages cert-manager and itself
+  (app-of-apps, #43). New cluster: `kubectl apply -k k8s/platform/argocd --server-side`,
+  then `kubectl apply -k k8s/platform/argocd-apps` once; git does the rest.
 
 ## Daily use
 

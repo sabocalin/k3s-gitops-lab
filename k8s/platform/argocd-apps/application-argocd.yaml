@@ -1,0 +1,29 @@
+# #43: Argo CD manages itself: k8s/platform/argocd (the vendored core install plus this
+# repo's patches). An upgrade is a PR that changes the vendored file and image digests;
+# the controller then applies it, restarting its own pods as it goes.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argocd
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/sabocalin/k3s-gitops-lab.git
+    targetRevision: main
+    path: k8s/platform/argocd
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      # CRDs and the Namespace carry Prune=false (kustomization.yaml).
+      prune: true
+      selfHeal: true
+    syncOptions:
+      # The ApplicationSet CRD (1.44 MB) does not fit the 256 KiB last-applied annotation
+      # of client-side apply (#40). Server-side apply tracks ownership in managedFields.
+      - ServerSideApply=true
+      - FailOnSharedResource=true
+    retry:
+      limit: 5
+      backoff: {duration: 10s, factor: 2, maxDuration: 3m}

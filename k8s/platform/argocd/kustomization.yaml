@@ -1,8 +1,9 @@
 # #40: Argo CD "core": the GitOps engine without its API server, web UI or SSO (Dex).
 # Components: application-controller (compares git with the cluster and syncs), repo-server
 # (clones git, renders Kustomize), redis (cache), applicationset-controller (generates
-# Applications). Driven with kubectl and Application objects (#42). Applied by hand for
-# now; Argo CD manages itself from #43.
+# Applications). Driven with kubectl and Application objects (#42). Applied by hand once
+# per cluster (kubectl apply -k --server-side); since #43 the Application argocd
+# (../argocd-apps) syncs it, so Argo CD manages itself.
 #
 # vendor/argocd-core-install-v3.5.3.yaml is upstream's manifests/core-install.yaml at the
 # v3.5.3 tag's commit c9c369efcc5b2a0bd720803f8d14a1c3eaddf579, unmodified (the install
@@ -57,3 +58,22 @@ patches:
       - op: add
         path: /spec/template/spec/containers/0/resources
         value: {requests: {cpu: 10m, memory: 16Mi}, limits: {cpu: 200m, memory: 128Mi}}
+  # #43: Argo CD manages this component. Never prune its CRDs or Namespace, even if they
+  # disappear from git: deleting a CRD deletes every object of that kind cluster-wide,
+  # and deleting the Namespace deletes everything in it. Removing them stays a manual job.
+  - target: {kind: CustomResourceDefinition}
+    patch: |-
+      apiVersion: apiextensions.k8s.io/v1
+      kind: CustomResourceDefinition
+      metadata:
+        name: any
+        annotations:
+          argocd.argoproj.io/sync-options: Prune=false
+  - target: {kind: Namespace}
+    patch: |-
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: any
+        annotations:
+          argocd.argoproj.io/sync-options: Prune=false

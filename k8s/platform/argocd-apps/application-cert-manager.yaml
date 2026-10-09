@@ -1,0 +1,24 @@
+# #43: cert-manager (#36), from k8s/platform/cert-manager.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cert-manager
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/sabocalin/k3s-gitops-lab.git
+    targetRevision: main
+    path: k8s/platform/cert-manager
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cert-manager
+  syncPolicy:
+    automated:
+      # CRDs and the Namespace carry Prune=false (kustomization.yaml).
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - FailOnSharedResource=true
+    retry:
+      limit: 5
+      backoff: {duration: 10s, factor: 2, maxDuration: 3m}
