@@ -47,6 +47,7 @@ verified, and what surprised us. New notes start from [`_template.md`](_template
 | #45 | [Rollback drill: git revert the image bump](45-rollback-drill.md) | 4 |
 | #47 | [Memory headroom before adding ArgoCD and observability](47-memory-headroom.md) | 5 |
 | #48 | [Metrics and logs to Grafana Cloud (free tier) via Alloy](48-alloy-grafana-cloud.md) | 5 |
+| #49 | [Alert: lab-api readiness failing for more than 2 minutes, by email](49-readiness-alert.md) | 5 |
 | #54 | [External Secrets Operator + SSM Parameter Store](54-external-secrets.md) | 5 |
 | #57 | [AI code review on pull requests](57-ai-review.md) | 0 |
 | #61 | [`make start / stop / extend / status / up / down`](61-make-lifecycle.md) | 1 |

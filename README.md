@@ -23,7 +23,7 @@ GitHub Actions ──bot PR──▶ main (new image digest) ◀──polls─�
 ```
 
 - Address ranges: VPC `10.42.0.0/16`, pods `10.52.0.0/16`, Services `10.53.0.0/16`. They must not overlap; an Ansible guard checks this (#90).
-- Infrastructure: Terraform (S3 backend) + Ansible installs K3s. Three stacks, each with
+- Infrastructure: Terraform (S3 backend) + Ansible installs K3s. Four stacks, each with
   its own state in the bootstrap bucket:
 
   | Stack | Contents | Lifetime |
@@ -31,6 +31,7 @@ GitHub Actions ──bot PR──▶ main (new image digest) ◀──polls─�
   | `terraform/bootstrap` | state bucket, budget alert, alternate contacts, GitHub OIDC roles | permanent |
   | `terraform/platform` | VPC, public subnet, internet gateway, security groups, IAM, SSM | permanent (all free) |
   | `terraform/instance` | the EC2 instance | stopped when idle, destroyed and rebuilt weekly |
+  | `terraform/grafana` | Grafana Cloud alerting: the readiness alert and its email contact point (#49); run with `scripts/tf-grafana.sh` | permanent |
 - Images: built natively for arm64 in GitHub Actions, pushed to GHCR, signed.
 - Deploys: two paths to separate namespaces, push (`kubectl apply` from Actions)
   and pull (ArgoCD watching this repo). ArgoCD also manages cert-manager and itself
