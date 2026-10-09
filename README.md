@@ -29,7 +29,7 @@ GitHub Actions ──bot PR──▶ main (new image digest) ◀──polls─�
   | Stack | Contents | Lifetime |
   |---|---|---|
   | `terraform/bootstrap` | state bucket, budget alert, alternate contacts, GitHub OIDC roles | permanent |
-  | `terraform/platform` | VPC, public subnet, internet gateway, security groups, IAM, SSM | permanent (all free) |
+  | `terraform/platform` | VPC, three public subnets (one per zone; the node uses one), internet gateway, security groups, IAM roles (node, ESO, autostop) | permanent (all free). SSM parameters are created by hand; Terraform knows only their names |
   | `terraform/instance` | the EC2 instance | stopped when idle, destroyed and rebuilt weekly |
   | `terraform/grafana` | Grafana Cloud alerting: the readiness alert and its email contact point (#49); run with `scripts/tf-grafana.sh` | permanent |
 - Images: built natively for arm64 in GitHub Actions, pushed to GHCR, signed.
@@ -78,7 +78,7 @@ works with a read-only root filesystem. All bases are pinned by digest.
 
 ## Cost model
 
-Target: **near $0**, about $1.35–2.10/month. The AWS account is on the **paid plan with no
+Target: **near $0**, about $3/month. The AWS account is on the **paid plan with no
 credits** (the Free plan was not available for it), so nothing caps spending: the design
 keeps billable resources small and running only when used. Prices are approximate
 eu-central-1 on-demand list prices, before VAT; check the pricing pages.
@@ -101,11 +101,13 @@ safety nets stop a forgotten node: a **session lease** (every `make start` sched
 3 hours later) and a nightly auto-stop at 23:00 Europe/Bucharest. A weekly
 destroy-and-rebuild drill proves everything comes back from git.
 
-| Usage (~40 h/month running) | Until 2026-12-31 | After |
-|---|---|---|
-| **Stop when idle** (chosen) | ~$1.35/month | ~$2.10/month |
-| Destroy when idle | ~$0.26/month | ~$1.05/month |
-| Running 24/7 (for comparison) | ~$4.80/month | ~$19/month |
+| Usage (~40 h/month running, `t4g.medium` since #40) | Per month |
+|---|---|
+| **Stop when idle** (chosen): EC2 ~$1.54 + disk ~$1.14 + IPv4 while running ~$0.20 | **~$2.90** |
+| Destroy when idle: EC2 + IPv4, the disk only exists while running | ~$1.80 |
+| Running 24/7 (for comparison): EC2 ~$28 + disk + IPv4 ~$3.60 | ~$33 |
+
+The weekly rebuild (#64) runs the node about 25 minutes a week: ~$0.07/month.
 
 Notes:
 
