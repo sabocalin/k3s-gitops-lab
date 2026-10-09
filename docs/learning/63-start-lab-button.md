@@ -76,6 +76,12 @@ phone / Actions tab ─▶ workflow_dispatch (action: start|stop|extend, lease 1
   - `concurrency: lab`, never cancelled, so a stop can't interrupt a start halfway;
   - actions pinned by commit; zizmor 1.30.1: no findings.
 - `scripts/lab.sh`: CI mode (above); `say` and `die` also write the summary.
+- `.github/workflows/aws-oidc-check.yml` (#16's check, from GitHub's side):
+  - on pull requests, `lab-role-refuses-pull-request`: assuming the lab role must fail;
+  - on dispatch, `lab-role` in the `lab` environment: stop/start dry runs allowed;
+    terminate and resize dry runs, the nightly schedule, the secret and Terraform state
+    denied. Read-only probes only: a probe that was wrongly allowed must not change
+    anything.
 - README: the button under "Daily use", the role in the OIDC table.
 
 ## Verification
@@ -89,9 +95,11 @@ Before the merge (the workflow can only run from `main`):
 | `lab` environment | branch policy `main` (type branch), 0 secrets |
 | `lab.sh status` on the laptop | unchanged |
 | `GITHUB_ACTIONS=true lab.sh status` | refused (`only start|stop|extend`), written to the summary |
-| zizmor 1.30.1 on `lab.yml` | no findings |
+| zizmor 1.30.1 on `lab.yml`, `aws-oidc-check.yml` | no findings |
+| `aws-oidc-check` on this PR: `lab-role-refuses-pull-request` | the assume failed: "lab role refused the pull_request token, as expected" |
 
 After the merge (recorded with Phase 4's close):
+- `aws-oidc-check` dispatched from `main`: the `lab-role` job;
 - the button stops the node, then starts it, reading the summary;
 - a run from a branch other than `main` is refused by the environment;
 - a press from the GitHub mobile app (by the user).
