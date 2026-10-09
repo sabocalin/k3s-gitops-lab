@@ -127,11 +127,16 @@ Negative controls:
 | Two stray Namespaces carrying cert-manager's tracking id, one with `Prune=false` | without the annotation: pruned (Terminating within 20 s). With it: still Active, flagged `requiresPruning`, app stays OutOfSync until it's deleted by hand |
 | `make k8s` with 8 broken copies: StatefulSet missing from `platform`, an unneeded Ingress added, `kube-system` destination missing, lab-api destination `push`, cert-manager in an undefined project, selfHeal off on `argocd`, a `*` destination, an Application path under `k8s/namespaces` | each one reported |
 
-After the merge (to record with #44):
-- bootstrap the root with `kubectl apply -k k8s/platform/argocd-apps`;
-- the root is Synced and every Application carries the root's tracking id;
-- the `Prune=false` annotations reach the 9 CRDs and both Namespaces;
-- a `kubectl patch` turning off `lab-api-gitops`'s selfHeal is reverted by the root.
+After the merge (merge commit `ea2f231`, recorded with #44):
+
+| Check | Result |
+|---|---|
+| Bootstrap: `kubectl apply -k k8s/platform/argocd-apps` (after a server dry run: only `root` created, `gitops` project configured) | `root` Synced on `ea2f231` 10 s later |
+| Tracking | all 5 Applications (root included) and both AppProjects carry root's tracking id |
+| `Prune=false` reached the cluster through the child apps | 9/9 CRDs, 2/2 Namespaces |
+| `kubectl patch` turning off `lab-api-gitops`'s selfHeal | reverted by root in about 1 s, by an automated sync |
+| `kubectl patch` on root itself (`retry.limit` 5 → 7) | **not** reverted at once: no compare was triggered. Reverted by the periodic refresh 2 min 11 s later |
+| A `default` AppProject (allows everything) found next to ours | created by this note's own `argocd app diff --core` run (manager `argocd-darwin-arm64`, 07:24 UTC). Not used by any app and not in git; deleted |
 
 ## Gotchas
 - **App health ignored a missing Deployment.** With selfHeal off and the cert-manager
@@ -146,6 +151,13 @@ After the merge (to record with #44):
   Pointing it at a context with `namespace: argocd` fixes `configmap "argocd-cm" not
   found`. It was done with a credential-free kubeconfig overlay (only a context, reusing
   the lab file's cluster and user), so the lab kubeconfig wasn't edited.
+- **`argocd … --core` creates a `default` AppProject** (any repository, any destination,
+  any kind). Core mode runs an API server inside the CLI, and the API server creates
+  `default` if it's missing. The install itself never does (#40). Delete it after
+  using the CLI, or check with `kubectl -n argocd get appprojects`.
+- **The root reverts edits to children within a second, but edits to itself only on the
+  next periodic refresh** (up to about 3 min). A child Application is a resource the root
+  watches; the root's own spec change didn't start a compare. Not investigated further.
 - **Tracking id for cluster-scoped objects** uses the Application's destination namespace:
   `cert-manager:/Namespace:cert-manager/cert-manager`.
 - **Not yet under Argo CD:** `k8s/namespaces/{push,gitops}` (namespaces, guardrails,
