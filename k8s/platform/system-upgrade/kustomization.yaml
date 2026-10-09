@@ -1,0 +1,65 @@
+# #51: Rancher's system-upgrade-controller. It watches Plan objects (../upgrade-plans) and,
+# for each node a Plan selects, runs a Job that replaces the K3s binary with the Plan's
+# version and restarts K3s. An upgrade is then a reviewed change to a Plan in git, applied
+# by Argo CD, instead of re-running the installer by hand on the node.
+#
+# vendor/ holds the v0.20.2 release assets system-upgrade-controller.yaml and crd.yaml,
+# unmodified; their sha256s matched GitHub's published asset digests when vendored and are
+# checked by scripts/render-k8s.sh (vendor/SHA256SUMS).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - vendor/suc-v0.20.2-crd.yaml
+  - vendor/suc-v0.20.2-system-upgrade-controller.yaml
+
+images:
+  # Not cosign-signed on Docker Hub (checked: no signatures). Pinned by digest only.
+  - name: rancher/system-upgrade-controller
+    digest: sha256:61b68d4372baf7ae90fb0f879feea1c082381a8b7547cc5ec85d393c497b11cb
+
+patches:
+  # The upgrade Job mounts the host's root filesystem and runs privileged: that is how it
+  # replaces /usr/local/bin/k3s and restarts the service. "restricted" and "baseline" both
+  # forbid it. Only this controller and its Jobs live here.
+  - target: {kind: Namespace, name: system-upgrade}
+    patch: |-
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: system-upgrade
+        labels:
+          pod-security.kubernetes.io/enforce: privileged
+          pod-security.kubernetes.io/enforce-version: v1.36
+          pod-security.kubernetes.io/warn: restricted
+          pod-security.kubernetes.io/warn-version: v1.36
+        annotations:
+          k3s-gitops-lab/pod-security-exception: >-
+            upgrade Jobs run privileged with the host filesystem to replace the K3s binary
+          argocd.argoproj.io/sync-options: Prune=false
+  # The image the Jobs use to cordon the node: upstream ships v1.30.3 by tag, in a
+  # ConfigMap (so the image pin check, which reads containers, never sees it). v1.36.2,
+  # within one minor of the cluster before and after the upgrade, by digest. Not
+  # cosign-signed on Docker Hub (checked).
+  - target: {kind: ConfigMap, name: default-controller-env}
+    patch: |-
+      - op: test
+        path: /data/SYSTEM_UPGRADE_JOB_KUBECTL_IMAGE
+        value: rancher/kubectl:v1.30.3
+      - op: replace
+        path: /data/SYSTEM_UPGRADE_JOB_KUBECTL_IMAGE
+        value: rancher/kubectl@sha256:06c7a7a9772737494ae1e0c3af90f1b5385630c147e47c1c7cea92f4bed55fbe
+  - target: {kind: Deployment, name: system-upgrade-controller}
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/resources
+        value: {requests: {cpu: 10m, memory: 24Mi}, limits: {cpu: 200m, memory: 96Mi}}
+  # Argo CD manages this component (#43): never prune the CRD.
+  - target: {kind: CustomResourceDefinition}
+    patch: |-
+      apiVersion: apiextensions.k8s.io/v1
+      kind: CustomResourceDefinition
+      metadata:
+        name: any
+        annotations:
+          argocd.argoproj.io/sync-options: Prune=false

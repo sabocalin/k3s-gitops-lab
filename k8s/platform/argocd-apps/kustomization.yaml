@@ -18,4 +18,6 @@ resources:
   - application-external-secrets.yaml
   - application-secret-stores.yaml
   - application-monitoring.yaml
+  - application-system-upgrade.yaml
+  - application-upgrade-plans.yaml
   - application-lab-api-gitops.yaml
