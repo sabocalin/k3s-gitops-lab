@@ -13,6 +13,7 @@ internet ──80/443──▶ k3s-gitops-lab.duckdns.org ─▶ EC2 t4g.medium 
                        ├─ Traefik ingress ─▶ FastAPI, namespace push (3-5 replicas)
                        ├─ cert-manager (Let's Encrypt)
                        ├─ External Secrets ─▶ SSM Parameter Store (narrow role)
+                       ├─ Alloy ─▶ Grafana Cloud (metrics, logs; free tier)
                        └─ ArgoCD (core) ─▶ FastAPI, namespace gitops (synced from main)
 
 admin ──Tailscale──▶ SSH + Kubernetes API   (no public 22 or 6443)
