@@ -1,5 +1,6 @@
-# #63: the "Start lab" button. Start, stop or extend the lab node from the Actions tab or
-# the GitHub mobile app (Actions -> lab -> Run workflow), without the laptop.
+# #63: the "Start lab" button. Start, stop or extend the lab node without the laptop:
+# github.com/sabocalin/k3s-gitops-lab/actions/workflows/lab.yml -> Run workflow (also in a
+# phone's browser). The GitHub mobile app showed no Run workflow button when tried.
 #
 # It runs scripts/lab.sh, the same code as `make start/stop/extend`, with one-hour AWS
 # credentials from GitHub OIDC for the role k3s-gitops-lab-github-lab (terraform/bootstrap):
@@ -36,6 +37,8 @@ concurrency:
 
 env:
   AWS_REGION: eu-central-1
+  # The lease time in the summary in local time, not the runner's UTC.
+  TZ: Europe/Bucharest
   LAB_ROLE: arn:aws:iam::466558795290:role/k3s-gitops-lab-github-lab
 
 jobs:
