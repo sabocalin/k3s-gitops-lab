@@ -43,3 +43,8 @@ output "autostop_role_arn" {
   description = "Role EventBridge Scheduler uses to stop the node (nightly stop, lease)."
   value       = aws_iam_role.autostop.arn
 }
+
+output "eso_role_arn" {
+  description = "Role External Secrets Operator assumes to read /k3s-gitops-lab/grafana-cloud/* (#54)."
+  value       = aws_iam_role.eso.arn
+}

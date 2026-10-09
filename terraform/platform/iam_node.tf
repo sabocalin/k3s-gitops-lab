@@ -47,6 +47,14 @@ data "aws_iam_policy_document" "node" {
     resources = [local.duckdns_token_arn]
   }
 
+  # #54: External Secrets Operator (hostNetwork, so it gets these credentials) switches to
+  # its own narrow role for every read (iam_eso.tf).
+  statement {
+    sid       = "AssumeEsoRole"
+    actions   = ["sts:AssumeRole"]
+    resources = [aws_iam_role.eso.arn]
+  }
+
   # Minimal Session Manager (no port 22, no key pair). NOT AmazonSSMManagedInstanceCore:
   # that managed policy also allows ssm:GetParameter(s) on every parameter.
   statement {

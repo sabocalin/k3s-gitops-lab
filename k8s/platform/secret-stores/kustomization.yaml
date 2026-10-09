@@ -1,0 +1,8 @@
+# #54: where ExternalSecrets read from. Instances of External Secrets Operator's CRDs,
+# validated by its webhook, so a separate Application (secret-stores) that retries until
+# ESO runs, like cluster-issuers after cert-manager.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - clustersecretstore-aws-ssm.yaml

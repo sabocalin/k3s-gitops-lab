@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: external-secrets
+  labels:
+    # The one platform namespace below "restricted": the controller runs with hostNetwork
+    # so that it, and no other pod, reaches the instance metadata service (IMDS hop limit 1)
+    # for AWS credentials. hostNetwork is forbidden by "baseline" too, hence "privileged".
+    # Only the three ESO Deployments live here, and they keep a restricted security context.
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/enforce-version: v1.36
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: v1.36
+  annotations:
+    # Required by scripts/render-k8s.sh for any platform namespace that is not "restricted".
+    k3s-gitops-lab/pod-security-exception: >-
+      external-secrets controller needs hostNetwork to reach IMDS with hop limit 1
