@@ -1,0 +1,11 @@
+# #41, #44: which build of lab-api runs, in BOTH namespaces: k8s/overlays/push and
+# k8s/overlays/gitops include this Component. Owned by the bot: after every image publish,
+# CI runs `kustomize edit set image` here and opens a PR (scripts/bump-image.sh), so one
+# commit moves both deploy paths: deploy-push applies push, Argo CD syncs gitops.
+# Kept in its own Component so the edit (kustomize reformats the file it edits) touches
+# only this.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+images:
+- digest: sha256:9186280ad5e397ddbda0741bd6dec10ca245c94ed2deca56ec51303597a1c7f0
+  name: ghcr.io/sabocalin/k3s-gitops-lab/lab-api

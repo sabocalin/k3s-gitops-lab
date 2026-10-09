@@ -88,7 +88,7 @@ jobs:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
     outputs:
-      digest: ${{ steps.push.outputs.digest }} # for gitops-bump (#41)
+      digest: ${{ steps.push.outputs.digest }} # for image-bump (#41, #44)
     permissions:
       contents: read
       packages: write # push the image and its attestations to ghcr.io/<owner>/...
@@ -182,12 +182,12 @@ jobs:
         if: always()
         run: docker logout ghcr.io
 
-  # #41: point the gitops overlay at the image just published, through a PR that merges
-  # itself once the required checks pass. A GitHub App opens it: a PR opened with the job's
+  # #41, #44: point both deploy paths (k8s/components/lab-api-image) at the image just
+  # published, through a PR that merges itself once the required checks pass. A GitHub App opens it: a PR opened with the job's
   # own GITHUB_TOKEN would not start the required check workflows (GitHub's guard against
   # workflows triggering workflows), so it could never merge.
-  bump-gitops:
-    name: gitops-bump
+  bump:
+    name: image-bump
     needs: publish
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -219,8 +219,8 @@ jobs:
           permission-contents: write
           permission-pull-requests: write
 
-      - name: Open the gitops bump PR
+      - name: Open the image bump PR
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           DIGEST: ${{ needs.publish.outputs.digest }}
-        run: scripts/bump-gitops-image.sh "$IMAGE@$DIGEST"
+        run: scripts/bump-image.sh "$IMAGE@$DIGEST"

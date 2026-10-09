@@ -1,12 +1,14 @@
 #!/bin/sh
-# #41: point the gitops overlay at a newly published image, through a PR. Run by image.yml
-# after image-publish, with a GitHub App token (GH_TOKEN), on a checkout of the latest main.
+# #41, #44: point both deploy paths at a newly published image, through a PR. Run by
+# image.yml after image-publish, with a GitHub App token (GH_TOKEN), on a checkout of the
+# latest main.
 #
-#   scripts/bump-gitops-image.sh <image>@sha256:<digest>
+#   scripts/bump-image.sh <image>@sha256:<digest>
 #
-# 1. `kustomize edit set image` in k8s/overlays/gitops/image (a Component only this
-#    script edits), then render + check everything (render-k8s.sh).
-# 2. A branch bot/gitops-image-<digest prefix> from main, and ONE commit on it made through
+# 1. `kustomize edit set image` in k8s/components/lab-api-image (a Component only this
+#    script edits, included by both k8s/overlays/push and k8s/overlays/gitops), then
+#    render + check everything (render-k8s.sh).
+# 2. A branch bot/image-<digest prefix> from main, and ONE commit on it made through
 #    the GraphQL API (createCommitOnBranch): GitHub signs it, so it shows as Verified. A
 #    plain `git push` from the runner would be unsigned.
 # 3. Older open bump PRs are closed as superseded; the new PR gets auto-merge (squash), so
@@ -27,14 +29,14 @@ case $ref in
 esac
 digest=${ref#*@}
 short=$(printf '%s' "${digest#sha256:}" | cut -c1-12)
-dir=k8s/overlays/gitops/image
+dir=k8s/components/lab-api-image
 file=$dir/kustomization.yaml
 repo=$GITHUB_REPOSITORY
-branch=bot/gitops-image-$short
+branch=bot/image-$short
 
 (cd "$dir" && "$KUSTOMIZE" edit set image "$ref")
 if git diff --quiet -- "$file"; then
-  echo "bump: gitops already runs $digest; nothing to do"
+  echo "bump: main already pins $digest; nothing to do"
   exit 0
 fi
 git --no-pager diff -- "$file"
@@ -66,13 +68,13 @@ echo "bump: commit $commit on $branch"
 
 pr=$(gh pr create --repo "$repo" --base main --head "$branch" \
   --title "chore(gitops): deploy lab-api $short" \
-  --body "$(printf '%s\n\nOpened by %s (#41). Merges itself once the required checks pass; Argo CD then syncs the gitops namespace (#42).' "$body" "image.yml")")
+  --body "$(printf '%s\n\nOpened by %s (#41). Merges itself once the required checks pass; then deploy-push applies the push namespace (#39) and Argo CD syncs the gitops namespace (#42).' "$body" "image.yml")")
 echo "bump: $pr"
 
 # Superseded: an older bump that has not merged yet would otherwise conflict, or worse,
-# merge after this one and roll gitops back to an older build.
+# merge after this one and roll both namespaces back to an older build.
 gh pr list --repo "$repo" --state open --json number,headRefName --jq \
-  ".[] | select(.headRefName | startswith(\"bot/gitops-image-\")) | select(.headRefName != \"$branch\") | .number" |
+  ".[] | select(.headRefName | startswith(\"bot/image-\")) | select(.headRefName != \"$branch\") | .number" |
   while read -r old; do
     gh pr close "$old" --repo "$repo" --delete-branch --comment "Superseded by $pr."
     echo "bump: closed superseded #$old"
@@ -81,6 +83,6 @@ gh pr list --repo "$repo" --state open --json number,headRefName --jq \
 gh pr merge "$pr" --repo "$repo" --auto --squash
 echo "bump: auto-merge enabled on $pr"
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
-  printf '### gitops bump\n\n| | |\n|---|---|\n| Image | `%s` |\n| PR | %s |\n| Commit | `%s` (signed by GitHub) |\n' \
+  printf '### image bump\n\n| | |\n|---|---|\n| Image | `%s` |\n| PR | %s |\n| Commit | `%s` (signed by GitHub) |\n' \
     "$ref" "$pr" "$commit" >>"$GITHUB_STEP_SUMMARY"
 fi

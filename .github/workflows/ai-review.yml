@@ -26,7 +26,7 @@ jobs:
     # on a non-draft PR. Skip Dependabot (gets no repo secrets) and fork PRs (get no
     # secrets under pull_request, by design). Adding a label needs write access, so the
     # on-demand trigger is already limited to people who can push to this repo.
-    # #41: the bot's one-line gitops digest bumps are not reviewed automatically (one per
+    # #41: the bot's one-line image digest bumps are not reviewed automatically (one per
     # build would spend the free quota on nothing); the label still works on them.
     if: >-
       github.actor != 'dependabot[bot]'
@@ -34,7 +34,7 @@ jobs:
       && (
         (github.event.action == 'labeled' && github.event.label.name == 'ai-review')
         || (github.event.action != 'labeled' && !github.event.pull_request.draft
-            && !startsWith(github.event.pull_request.head.ref, 'bot/gitops-image-'))
+            && !startsWith(github.event.pull_request.head.ref, 'bot/image-'))
       )
     permissions:
       contents: read # read the repository and its history to build the diff

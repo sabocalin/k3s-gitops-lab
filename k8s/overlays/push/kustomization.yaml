@@ -20,7 +20,8 @@ labels:
     includeSelectors: false
     includeTemplates: true
 
-# The exact build, by digest: signed by CI (#25). A tag could be moved; a digest cannot.
-images:
-  - name: ghcr.io/sabocalin/k3s-gitops-lab/lab-api
-    digest: sha256:1b6125331f632d5d713bdc760a6f0f3d6049cdc56a498f3e38f31493e8c6ddd2
+# The exact build, by digest, signed by CI (#25); a tag could be moved, a digest cannot.
+# Set in a Component shared with the gitops overlay (#44) and bumped by CI through a PR
+# after every publish (#41); deploy-push applies it on merge.
+components:
+  - ../../components/lab-api-image
