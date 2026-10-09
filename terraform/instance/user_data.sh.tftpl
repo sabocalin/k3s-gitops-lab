@@ -1,18 +1,77 @@
 #!/bin/bash
-# First-boot script (cloud-init runs it once, as root). Installs Tailscale and joins the
-# tailnet with the OAuth client secret read from SSM. The secret never appears in this
-# file, on a command line, on disk, or in logs: only the parameter NAME is templated in.
+# First-boot script (cloud-init runs it once, as root). The node builds itself from git:
 #
-# Output goes to /var/log/cloud-init-output.log and the EC2 console; lines starting with
-# "K3SLAB:" are markers read by verification. Never enable `set -x` here: it would print
-# the secret.
+#   1. AWS CLI.
+#   2. #64: restore the node identity from SSM (K3s CAs and service-account keys, the
+#      Tailscale node state, the SSH host keys), saved once by scripts/save-node-identity.sh.
+#      A rebuilt node then has the same cluster CA (k8s/ci/cluster-ca.crt and kubeconfigs
+#      stay valid), the same tailnet device and IP, and the same SSH host key.
+#      With nothing saved (a brand-new project) the node makes a new identity instead.
+#   3. Tailscale: reconnect with the restored state, or join with the OAuth client secret.
+#   4. Clone this repository and run scripts/node-bootstrap.sh from it: Ansible locally
+#      (swap, K3s, DuckDNS), then the Argo CD bootstrap; Argo CD deploys the rest.
+#
+# Secrets never appear in this file, on a command line, in logs or in /tmp: only parameter
+# NAMES are templated in, values go through /run (tmpfs). Output goes to
+# /var/log/cloud-init-output.log and the EC2 console; lines starting with "K3SLAB:" are
+# markers read by verification. Never enable `set -x` here: it would print secrets.
 set -euo pipefail
 
 log() { echo "K3SLAB: $*"; }
-
+AWS=/snap/bin/aws
 log "boot script start"
 
-# --- Tailscale from its signed apt repository --------------------------------------------
+# --- 1. AWS CLI (the Ubuntu image ships without it; Amazon publishes it as a snap) -------
+snap wait system seed.loaded
+snap install aws-cli --classic
+log "aws cli $($AWS --version 2>&1 | cut -d' ' -f1) installed"
+
+# Exact value of one SSM parameter on stdout. JSON, not `--output text`, which appends a
+# newline the original file didn't have.
+ssm_value() { # <name>
+  $AWS ssm get-parameter --region "${region}" --name "$1" --with-decryption --output json |
+    python3 -c 'import json,sys; sys.stdout.write(json.load(sys.stdin)["Parameter"]["Value"])'
+}
+
+# --- 2. node identity (#64) --------------------------------------------------------------
+identity_prefix="${identity_prefix}"
+tls=/var/lib/rancher/k3s/server/tls
+identity_files="$tls/server-ca.crt $tls/server-ca.key $tls/client-ca.crt $tls/client-ca.key
+  $tls/request-header-ca.crt $tls/request-header-ca.key $tls/service.key $tls/service.current.key
+  $tls/etcd/peer-ca.crt $tls/etcd/peer-ca.key $tls/etcd/server-ca.crt $tls/etcd/server-ca.key
+  /var/lib/tailscale/tailscaled.state
+  /etc/ssh/ssh_host_ed25519_key /etc/ssh/ssh_host_ecdsa_key /etc/ssh/ssh_host_rsa_key"
+
+restored=no
+if $AWS ssm get-parameter --region "${region}" --name "$identity_prefix$tls/server-ca.key" \
+  --query Parameter.Name --output text >/dev/null 2>&1; then
+  # The same modes K3s and tailscaled create: traversable parents, private server state.
+  install -d -m 0755 /var/lib/rancher /var/lib/rancher/k3s
+  install -d -m 0700 /var/lib/rancher/k3s/server "$tls" "$tls/etcd" /var/lib/tailscale
+  for f in $identity_files; do
+    tmp=$(mktemp -p /run identity.XXXXXX)
+    ssm_value "$identity_prefix$f" > "$tmp"
+    case $f in
+      *.crt) mode=0644 ;;
+      *) mode=0600 ;;
+    esac
+    install -m "$mode" -o root -g root "$tmp" "$f"
+    shred -u "$tmp" 2>/dev/null || rm -f "$tmp"
+  done
+  # The public halves of the SSH host keys, derived from the restored private keys.
+  for k in /etc/ssh/ssh_host_ed25519_key /etc/ssh/ssh_host_ecdsa_key /etc/ssh/ssh_host_rsa_key; do
+    ssh-keygen -y -f "$k" > "$k.pub"
+    chmod 0644 "$k.pub"
+  done
+  systemctl restart ssh
+  restored=yes
+  log "node identity restored (16 files from $identity_prefix, values not shown)"
+else
+  log "no saved node identity under $identity_prefix: this node makes a new one"
+fi
+
+# --- 3. Tailscale from its signed apt repository -----------------------------------------
+# Installed AFTER the restore: the service starts with the restored state on first run.
 install -d -m 0755 /usr/share/keyrings
 curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg \
   -o /usr/share/keyrings/tailscale-archive-keyring.gpg
@@ -23,41 +82,44 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tailscale
 systemctl enable --now tailscaled
 log "tailscale $(tailscale version | head -1) installed"
 
-# --- AWS CLI (the Ubuntu image ships without it; Amazon publishes it as a snap) -----------
-snap wait system seed.loaded
-snap install aws-cli --classic
-log "aws cli $(/snap/bin/aws --version 2>&1 | cut -d' ' -f1) installed"
+ts_backend() {
+  tailscale status --json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("BackendState",""))' || true
+}
 
-# --- Secret: SSM -> memory-backed file -> tailscale -> shredded --------------------------
-secret_file=$(mktemp -p /run ts-authkey.XXXXXX)   # /run is tmpfs: never written to disk
-chmod 0600 "$secret_file"
-trap 'shred -u "$secret_file" 2>/dev/null || rm -f "$secret_file"' EXIT
-
-# `--output text` ends with a newline; strip it BEFORE appending the attributes, or the
-# file becomes "secret\n?attrs" and Tailscale sends "secret\n" (HTTP 401).
-/snap/bin/aws ssm get-parameter \
-  --region "${region}" \
-  --name "${secret_parameter}" \
-  --with-decryption \
-  --query Parameter.Value --output text | tr -d '\n' > "$secret_file"
-
-# Fail loudly on a malformed secret instead of getting an opaque 401 later.
-if grep -q '[[:space:]]' "$secret_file" || ! grep -q '^tskey-client-' "$secret_file"; then
-  log "ERROR: stored secret is not a single-line tskey-client-... value"
-  exit 1
+# The same flags as the first enrolment: `tailscale up` refuses a partial set once logged in.
+if [ "$restored" = yes ] && tailscale up --advertise-tags="${tag}" --hostname="${hostname}" --ssh --timeout=90s &&
+  [ "$(ts_backend)" = Running ]; then
+  log "tailscale reconnected with the restored identity"
+else
+  [ "$restored" = yes ] && log "WARNING: restored Tailscale state did not log in; enrolling with the OAuth client"
+  # --- Secret: SSM -> memory-backed file -> tailscale -> shredded ---
+  secret_file=$(mktemp -p /run ts-authkey.XXXXXX)
+  chmod 0600 "$secret_file"
+  trap 'shred -u "$secret_file" 2>/dev/null || rm -f "$secret_file"' EXIT
+  ssm_value "${secret_parameter}" | tr -d '\n' > "$secret_file"
+  # Fail loudly on a malformed secret instead of getting an opaque 401 later.
+  if grep -q '[[:space:]]' "$secret_file" || ! grep -q '^tskey-client-' "$secret_file"; then
+    log "ERROR: stored secret is not a single-line tskey-client-... value"
+    exit 1
+  fi
+  secret_len=$(wc -c < "$secret_file")
+  # An OAuth client secret works as an auth key; the query string sets key attributes.
+  printf '?ephemeral=false&preauthorized=true' >> "$secret_file"
+  log "secret fetched ($secret_len bytes + 35 bytes of attributes, value not shown)"
+  tailscale up \
+    --auth-key="file:$secret_file" \
+    --advertise-tags="${tag}" \
+    --hostname="${hostname}" \
+    --ssh
 fi
-secret_len=$(wc -c < "$secret_file")
-
-# An OAuth client secret works as an auth key; the query string sets key attributes.
-printf '?ephemeral=false&preauthorized=true' >> "$secret_file"
-log "secret fetched ($secret_len bytes + 35 bytes of attributes, value not shown)"
-
-tailscale up \
-  --auth-key="file:$secret_file" \
-  --advertise-tags="${tag}" \
-  --hostname="${hostname}" \
-  --ssh
 
 log "tailscale ip $(tailscale ip -4)"
 log "tailscale status: $(tailscale status --json | python3 -c 'import json,sys; s=json.load(sys.stdin)["Self"]; print("online=%s tags=%s dns=%s" % (s.get("Online"), s.get("Tags"), s.get("DNSName")))')"
+
+# --- 4. configure from git ---------------------------------------------------------------
+# The public repository at main: protected (PR, checks, signed commits, #6).
+git clone --quiet --depth 1 --branch main "${repo_url}" /opt/k3s-gitops-lab
+log "repository cloned at $(git -C /opt/k3s-gitops-lab rev-parse --short HEAD)"
+/opt/k3s-gitops-lab/scripts/node-bootstrap.sh
+
 log "boot script done"

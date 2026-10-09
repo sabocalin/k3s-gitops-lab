@@ -137,6 +137,15 @@ show_dns() { # <public ip>
   fi
 }
 
+# #64: the node identity a fresh node restores at first boot (scripts/save-node-identity.sh).
+# Metadata only: counts the parameters, never reads a value.
+identity_saved() {
+  n=$(aws ssm describe-parameters \
+    --parameter-filters "Key=Path,Option=Recursive,Values=/$PROJECT/node-identity" \
+    --query 'length(Parameters)' --output text 2>/dev/null || echo 0)
+  [ "${n:-0}" -ge 16 ]
+}
+
 # --- the lease ------------------------------------------------------------------------
 
 # Format a Unix time; macOS date takes -r <seconds>, GNU date takes -d @<seconds>.
@@ -267,12 +276,14 @@ wait_dns() { # <instance id>
     return 0
   fi
   # K3s answering is not the app answering: Traefik restarts after a boot too. Resolve to
-  # the new IP explicitly, so the laptop's DNS cache cannot hide or fake the result.
-  if wait_for 12 "http://$DDNS_NAME/health" \
-    curl -sf --max-time 5 --resolve "$DDNS_NAME:80:$ip" "http://$DDNS_NAME/health"; then
-    say "app: http://$DDNS_NAME/health answers"
+  # the new IP explicitly, so the laptop's DNS cache cannot hide or fake the result. HTTPS,
+  # with the certificate verified: over plain HTTP the redirect to HTTPS (308) would count
+  # as success (curl -f only fails on 4xx/5xx) without the app ever answering.
+  if wait_for 12 "https://$DDNS_NAME/health" \
+    curl -sf --max-time 5 --resolve "$DDNS_NAME:443:$ip" "https://$DDNS_NAME/health"; then
+    say "app: https://$DDNS_NAME/health answers"
   else
-    say "app: http://$DDNS_NAME/health not answering yet; check Traefik and the lab-api pods"
+    say "app: https://$DDNS_NAME/health not answering yet; check Traefik, the certificate and the lab-api pods"
   fi
 }
 
@@ -340,15 +351,18 @@ cmd_up() {
   fresh=false
   if [ -z "$(find_instances)" ]; then
     fresh=true
-    ! tailnet_has_node ||
-      die "an old '$NODE' device is still in the tailnet; remove it at
+    # #64: with a saved identity the new node IS that device (same key, name and IP).
+    # Without one, a leftover device would push the new node to $NODE-1.
+    identity_saved || ! tailnet_has_node ||
+      die "an old '$NODE' device is still in the tailnet and no node identity is saved; remove it at
   https://login.tailscale.com/admin/machines first, or the new node joins as $NODE-1"
   fi
   plan_and_apply up.tfplan "Apply this plan?"
   id=$(instance_id)
   [ "$(state_of "$id")" = running ] || start_instance "$id"
-  if [ "$fresh" = true ]; then
-    # A new node has a new SSH host key; forget the old one (this project's file only).
+  if [ "$fresh" = true ] && ! identity_saved; then
+    # A new node with a new identity has a new SSH host key; forget the old one (this
+    # project's file only). With a saved identity (#64) the host key is restored.
     ssh-keygen -R "$NODE_FQDN" -f "$KNOWN_HOSTS" >/dev/null 2>&1 || true
   fi
   wait_for 60 "$NODE to join the tailnet and accept SSH" node_ssh true ||
@@ -363,13 +377,23 @@ cmd_up() {
     2) say "cloud-init done, with recoverable warnings (ssh $NODE cloud-init status --long)" ;;
     *) say "warning: cloud-init failed (exit $rc); see: ssh $NODE cloud-init status --long" ;;
   esac
-  say "configuring the node with Ansible"
-  ansible/run.sh ansible-playbook site.yml
-  # The ArgoCD bootstrap (#40) joins here.
+  if [ "$fresh" = true ]; then
+    # #64: a fresh node configured itself during cloud-init (scripts/node-bootstrap.sh:
+    # Ansible locally, then the Argo CD bootstrap).
+    say "the node configured itself at first boot (Ansible + Argo CD bootstrap)"
+  else
+    say "configuring the node with Ansible"
+    ansible/run.sh ansible-playbook site.yml
+  fi
   set_lease "$id"
   show_address "$id"
   if [ "$fresh" = true ]; then
-    say "new cluster, new admin credential: run make kubeconfig, then kcreload in your shell"
+    if identity_saved; then
+      say "same cluster CA and admin credential as before (restored identity): kubeconfig and CI keep working"
+    else
+      say "new cluster, new admin credential: run make kubeconfig, then kcreload in your shell"
+    fi
+    say "namespace push is empty on a new cluster: run the deploy-push workflow (gh workflow run deploy-push.yml)"
   fi
 }
 
@@ -377,9 +401,12 @@ cmd_down() {
   guard_account
   plan_and_apply down.tfplan "Destroy the node and its disk?" -destroy
   delete_lease
-  # The node's Tailscale device outlives the instance, and it keeps the name k3s-node
-  # even when logged out (a logout only expires its key). Only deleting it frees the name.
-  if ! "$TSU" status >/dev/null 2>&1 || tailnet_has_node; then
+  # The node's Tailscale device outlives the instance. #64: with a saved node identity
+  # the next node restores it and becomes that same device again, so it stays. Without
+  # one, only deleting the device frees the name for the next node.
+  if identity_saved; then
+    say "the tailnet device '$NODE' stays: the next node restores its identity (#64)"
+  elif ! "$TSU" status >/dev/null 2>&1 || tailnet_has_node; then
     say "next: remove the old '$NODE' device at https://login.tailscale.com/admin/machines"
     say "(make up refuses to build while it is there: the new node would join as $NODE-1)"
   fi

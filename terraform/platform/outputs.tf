@@ -25,7 +25,7 @@ output "node_instance_profile_name" {
 }
 
 output "node_role_arn" {
-  description = "The node role (two named SSM parameters + Session Manager)."
+  description = "The node role (two SSM parameters, the node identity, the ESO role, Session Manager)."
   value       = aws_iam_role.node.arn
 }
 
@@ -47,4 +47,9 @@ output "autostop_role_arn" {
 output "eso_role_arn" {
   description = "Role External Secrets Operator assumes to read /k3s-gitops-lab/grafana-cloud/* (#54)."
   value       = aws_iam_role.eso.arn
+}
+
+output "node_identity_prefix" {
+  description = "SSM path of the saved node identity a rebuilt node restores at first boot (#64)."
+  value       = local.node_identity_prefix
 }

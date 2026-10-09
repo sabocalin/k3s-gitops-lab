@@ -28,8 +28,9 @@ resource "aws_instance" "node" {
   }
 
   # IMDSv2 only (session tokens; blocks SSRF-style credential theft). Hop limit 1: a
-  # container one network hop away cannot reach the metadata service. #54 raises it to 2
-  # only when External Secrets needs the node role.
+  # container one network hop away cannot reach the metadata service. It stays 1: External
+  # Secrets runs its controller with hostNetwork instead (#54), so no other pod gets the
+  # node role.
   metadata_options {
     http_endpoint               = "enabled"
     http_tokens                 = "required"
@@ -53,6 +54,9 @@ resource "aws_instance" "node" {
     secret_parameter = data.terraform_remote_state.platform.outputs.tailscale_secret_parameter
     tag              = "tag:k3s"
     hostname         = "k3s-node"
+    # #64: where scripts/save-node-identity.sh saved the node identity, and what to clone.
+    identity_prefix = data.terraform_remote_state.platform.outputs.node_identity_prefix
+    repo_url        = "https://github.com/sabocalin/k3s-gitops-lab.git"
   })
   user_data_replace_on_change = true
 

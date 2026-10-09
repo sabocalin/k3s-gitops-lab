@@ -26,6 +26,14 @@ on:
       - scripts/verify-image.sh
       - .github/workflows/deploy-push.yml
   workflow_dispatch:
+  # #64: the weekly rebuild (rebuild.yml) calls this after building a new node; the push
+  # namespace is empty on a new cluster until the push path deploys it.
+  workflow_call:
+    inputs:
+      wait_seconds:
+        description: Wait this long for the new node's API, RBAC and certificate (0 = strict)
+        type: number
+        default: 0
 
 # Deny everything at workflow level; the job asks for exactly what it needs.
 permissions: {}
@@ -86,4 +94,7 @@ jobs:
           done
 
       - name: Deploy to push
+        env:
+          # 0 for a merge or a manual run (inputs is empty there); set by rebuild.yml.
+          DEPLOY_WAIT_SECONDS: ${{ inputs.wait_seconds || 0 }}
         run: scripts/deploy-push.sh rendered
