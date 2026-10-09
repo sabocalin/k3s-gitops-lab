@@ -14,6 +14,6 @@ spec:
       default: # limits when none are set
         cpu: 250m
         memory: 128Mi
-      max: # no single container may claim a quarter of the 2 GiB node
+      max: # no single container may claim a large share of the node (sized for 2 GiB, #30; 4 GiB since #40)
         cpu: 500m
         memory: 256Mi

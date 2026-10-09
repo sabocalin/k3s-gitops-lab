@@ -1,4 +1,4 @@
 swap_file: /swapfile
 swap_size_mb: 1024
-# Low swappiness: swap is headroom for spikes on a 2 GiB node, not a working set.
+# Low swappiness: swap is headroom for spikes (sized for the 2 GiB node; 4 GiB since #40), not a working set.
 swap_swappiness: 10
