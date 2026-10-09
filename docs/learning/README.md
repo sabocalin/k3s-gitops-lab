@@ -49,6 +49,7 @@ verified, and what surprised us. New notes start from [`_template.md`](_template
 | #48 | [Metrics and logs to Grafana Cloud (free tier) via Alloy](48-alloy-grafana-cloud.md) | 5 |
 | #49 | [Alert: lab-api readiness failing for more than 2 minutes, by email](49-readiness-alert.md) | 5 |
 | #54 | [External Secrets Operator + SSM Parameter Store](54-external-secrets.md) | 5 |
+| #51 | [K3s upgrade via system-upgrade-controller (v1.36.4 → v1.37.1)](51-k3s-upgrade.md) | 5 |
 | #57 | [AI code review on pull requests](57-ai-review.md) | 0 |
 | #61 | [`make start / stop / extend / status / up / down`](61-make-lifecycle.md) | 1 |
 | #62 | [Nightly auto-stop (EventBridge Scheduler)](62-nightly-autostop.md) | 1 |
