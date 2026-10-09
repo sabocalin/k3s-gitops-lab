@@ -1,0 +1,7 @@
+# #51: K3s versions, as Plans for system-upgrade-controller (../system-upgrade). Instances
+# of its CRD, so a separate Application that retries until the controller runs.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - plan-k3s-server.yaml

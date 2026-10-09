@@ -1,0 +1,29 @@
+# #51: the K3s version of the server node(s). To upgrade: change `version` and the image
+# digest below (rancher/k3s-upgrade:<version with + as -> -), and k3s_version in
+# ansible/roles/k3s/defaults/main.yml (what a rebuild installs), in one PR.
+#
+# What happens: the controller sees the version differ from the node's, creates a Job on
+# that node: cordon, then the k3s-upgrade container copies the new binary over
+# /usr/local/bin/k3s and restarts the k3s service. Running pods keep running through the
+# restart (K3s doesn't stop containers when it restarts); only the API is briefly down.
+apiVersion: upgrade.cattle.io/v1
+kind: Plan
+metadata:
+  name: k3s-server
+  namespace: system-upgrade
+spec:
+  version: v1.37.1+k3s1
+  # One node at a time (there is one).
+  concurrency: 1
+  nodeSelector:
+    matchExpressions:
+      - {key: node-role.kubernetes.io/control-plane, operator: In, values: ["true"]}
+  serviceAccountName: system-upgrade
+  # Cordon (no new pods land while the binary is swapped) but no drain: with one node a
+  # drain would evict every pod with nowhere to go. Uncordoned when the Job succeeds.
+  cordon: true
+  upgrade:
+    # By digest: the controller only appends `:version` to a bare image name, so a
+    # digest reference is used as is. rancher/k3s-upgrade:v1.37.1-k3s1, not cosign-signed
+    # on Docker Hub (checked).
+    image: rancher/k3s-upgrade@sha256:7f2bb245bf1fcbadb2c35fe0206f383a0a71461944841ffebc6f368a4f8e46fb

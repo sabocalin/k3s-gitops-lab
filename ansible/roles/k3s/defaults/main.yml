@@ -1,5 +1,7 @@
-# Pinned. Stable channel on 2026-09-30 (https://update.k3s.io/v1-release/channels/stable).
-k3s_version: v1.36.4+k3s1
+# Pinned. What a fresh node (make up, the weekly rebuild) installs. A running node is
+# upgraded by system-upgrade-controller from k8s/platform/upgrade-plans (#51): change both
+# in one PR. v1.37.1+k3s1: the v1.37 channel's latest on 2026-10-09, 9 days old.
+k3s_version: v1.37.1+k3s1
 k3s_node_name: k3s-node
 k3s_release_url: "https://github.com/k3s-io/k3s/releases/download/{{ k3s_version | urlencode }}"
 

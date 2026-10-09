@@ -1,0 +1,25 @@
+# #51: the K3s upgrade Plan(s), from k8s/platform/upgrade-plans. A merge that changes a
+# Plan's version upgrades the cluster: Argo CD applies the Plan, the controller runs it.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: upgrade-plans
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/sabocalin/k3s-gitops-lab.git
+    targetRevision: main
+    path: k8s/platform/upgrade-plans
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: system-upgrade
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - SkipDryRunOnMissingResource=true
+      - FailOnSharedResource=true
+    retry:
+      limit: 10
+      backoff: {duration: 10s, factor: 2, maxDuration: 3m}
