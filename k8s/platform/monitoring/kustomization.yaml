@@ -1,0 +1,54 @@
+# #48: metrics and logs to Grafana Cloud (free tier). Synced by the Application monitoring
+# (../argocd-apps).
+#   Alloy (alloy.yaml, config in alloy-config.alloy): scrapes lab-api in push and gitops
+#     and kube-state-metrics, reads every pod's logs through the API, sends both to Grafana
+#     Cloud with a token from SSM (externalsecret-grafana-cloud.yaml, #54).
+#   kube-state-metrics: pod and Deployment state as metrics (readiness, for #49).
+#
+# vendor/kube-state-metrics-v2.20.0/ is examples/standard/ of kubernetes/kube-state-metrics
+# at the v2.20.0 tag's commit 4ffeda2ef866b0fef372849825a803296483b336, unmodified; its
+# sha256s are in vendor/SHA256SUMS and checked by scripts/render-k8s.sh.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: monitoring
+
+resources:
+  - namespace.yaml
+  - externalsecret-grafana-cloud.yaml
+  - alloy.yaml
+  - vendor/kube-state-metrics-v2.20.0/service-account.yaml
+  - vendor/kube-state-metrics-v2.20.0/cluster-role.yaml
+  - vendor/kube-state-metrics-v2.20.0/cluster-role-binding.yaml
+  - vendor/kube-state-metrics-v2.20.0/deployment.yaml
+  - vendor/kube-state-metrics-v2.20.0/service.yaml
+
+configMapGenerator:
+  # A content hash in the name: a config change rolls Alloy.
+  - name: alloy-config
+    files:
+      - config.alloy=alloy-config.alloy
+
+images:
+  # Not cosign-signed upstream (checked: no signatures). Pinned by digest only.
+  - name: docker.io/grafana/alloy
+    digest: sha256:2aa2099af76c0098d4af7a4d6e48f86cb66dc1a000222ad927a1c67c6542d13f
+  # Verified keyless: signed by the Kubernetes release process, logged in Rekor:
+  #   cosign verify --certificate-oidc-issuer https://accounts.google.com \
+  #     --certificate-identity krel-trust@k8s-releng-prod.iam.gserviceaccount.com \
+  #     registry.k8s.io/kube-state-metrics/kube-state-metrics@<digest>
+  - name: registry.k8s.io/kube-state-metrics/kube-state-metrics
+    digest: sha256:42cfe3723a5f058171c627537fb57a3ea0f26e4380fa18555a95cb1a1b4cfc5b
+
+patches:
+  # Expose only what the lab uses: every extra metric is series on the free tier's 10k.
+  - target: {kind: Deployment, name: kube-state-metrics}
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/args
+        value:
+          - --resources=pods,deployments
+          - --metric-allowlist=kube_pod_status_ready,kube_pod_status_phase,kube_pod_container_status_restarts_total,kube_pod_container_status_waiting_reason,kube_deployment_spec_replicas,kube_deployment_status_replicas_available
+      - op: add
+        path: /spec/template/spec/containers/0/resources
+        value: {requests: {cpu: 10m, memory: 24Mi}, limits: {cpu: 200m, memory: 96Mi}}

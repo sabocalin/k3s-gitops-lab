@@ -17,4 +17,5 @@ resources:
   - application-cluster-issuers.yaml
   - application-external-secrets.yaml
   - application-secret-stores.yaml
+  - application-monitoring.yaml
   - application-lab-api-gitops.yaml
