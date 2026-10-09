@@ -203,7 +203,9 @@ done
 # summary shows only the overlays; cert-manager alone is about 1 MB). Per component: every
 # vendored upstream file still matches vendor/SHA256SUMS; every image, including images
 # passed as flags (--*-image=), pinned by digest; every container with cpu/memory requests
-# and limits; every Namespace enforcing Pod Security "restricted".
+# and limits; every Namespace enforcing Pod Security "restricted", unless it carries a
+# written reason in the annotation k3s-gitops-lab/pod-security-exception (#54), and even
+# then warning on "restricted", so violations stay visible.
 mkdir -p "$out/platform"
 for dir in k8s/platform/*/; do
   [ -d "$dir" ] || continue
@@ -231,8 +233,14 @@ for dir in k8s/platform/*/; do
      | .name')
   [ -z "$unbounded" ] || problem "platform/$name: containers without cpu/memory requests and limits: $unbounded"
   unrestricted=$(printf '%s\n' "$objects" | jq -r \
-    'select(.kind == "Namespace" and .metadata.labels["pod-security.kubernetes.io/enforce"] != "restricted") | .metadata.name')
-  [ -z "$unrestricted" ] || problem "platform/$name: namespaces not enforcing Pod Security 'restricted': $unrestricted"
+    'select(.kind == "Namespace" and .metadata.labels["pod-security.kubernetes.io/enforce"] != "restricted")
+     | select((.metadata.annotations["k3s-gitops-lab/pod-security-exception"] // "") == ""
+              or .metadata.labels["pod-security.kubernetes.io/warn"] != "restricted")
+     | .metadata.name')
+  [ -z "$unrestricted" ] || problem "platform/$name: namespaces not enforcing Pod Security 'restricted' (and no k3s-gitops-lab/pod-security-exception reason with warn=restricted): $unrestricted"
+  printf '%s\n' "$objects" | jq -r --arg c "$name" \
+    'select(.kind == "Namespace" and .metadata.labels["pod-security.kubernetes.io/enforce"] != "restricted")
+     | "note: platform/\($c): namespace \(.metadata.name) enforces \(.metadata.labels["pod-security.kubernetes.io/enforce"]): \(.metadata.annotations["k3s-gitops-lab/pod-security-exception"] // "")"'
   printf 'ok: platform/%s -> %s (%s objects)\n' "$name" "$file" "$(printf '%s\n' "$objects" | wc -l | tr -d ' ')"
 done
 

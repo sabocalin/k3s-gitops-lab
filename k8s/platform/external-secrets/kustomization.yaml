@@ -1,0 +1,106 @@
+# #54: External Secrets Operator. Copies values from AWS SSM Parameter Store into
+# Kubernetes Secrets (ExternalSecret -> Secret), so no secret is committed to git or
+# created by hand. The store definition is ../secret-stores (an instance of these CRDs).
+# Synced by the Application external-secrets (../argocd-apps).
+#
+# AWS credentials, without static keys and without opening IMDS to every pod: the
+# controller runs with hostNetwork, so its requests to the instance metadata service come
+# from the node itself and pass the hop limit of 1 (terraform/instance). It gets the node
+# role and assumes k3s-gitops-lab-eso (terraform/platform/iam_eso.tf), which can read
+# /k3s-gitops-lab/grafana-cloud/* only. Any other pod's IMDS request is one hop too far.
+#
+# vendor/external-secrets-v2.11.0.yaml is the release asset external-secrets.yaml of
+# v2.11.0, unmodified; its sha256 matched GitHub's published asset digest when vendored and
+# is checked by scripts/render-k8s.sh. v2.12.0 was 3 days old (7-day cooldown).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Upstream puts everything in "default"; every namespaced object lands here instead. The
+# namespace transformer also rewrites the webhooks' service namespace and the bindings'
+# subjects; three flags that name the namespace are patched below.
+namespace: external-secrets
+
+resources:
+  - namespace.yaml
+  - vendor/external-secrets-v2.11.0.yaml
+
+images:
+  # Verified keyless: signed by GitHub Actions in external-secrets/external-secrets,
+  # workflow release.yml at refs/heads/main, logged in Rekor:
+  #   cosign verify --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  #     --certificate-identity-regexp '^https://github.com/external-secrets/external-secrets/' \
+  #     ghcr.io/external-secrets/external-secrets@<digest>
+  - name: ghcr.io/external-secrets/external-secrets
+    digest: sha256:66fb710878cbf3eba4a927e35c5d75e29a202c9bab238aad64bfb23b786b962b
+
+patches:
+  # Flags that name upstream's namespace. `test` first: if upstream reorders the flags,
+  # the build fails instead of silently patching the wrong one.
+  - target: {kind: Deployment, name: external-secrets-cert-controller}
+    patch: |-
+      - op: test
+        path: /spec/template/spec/containers/0/args/3
+        value: --service-namespace=default
+      - op: replace
+        path: /spec/template/spec/containers/0/args/3
+        value: --service-namespace=external-secrets
+      - op: test
+        path: /spec/template/spec/containers/0/args/5
+        value: --secret-namespace=default
+      - op: replace
+        path: /spec/template/spec/containers/0/args/5
+        value: --secret-namespace=external-secrets
+  - target: {kind: Deployment, name: external-secrets-webhook}
+    patch: |-
+      - op: test
+        path: /spec/template/spec/containers/0/args/2
+        value: --dns-name=external-secrets-webhook.default.svc
+      - op: replace
+        path: /spec/template/spec/containers/0/args/2
+        value: --dns-name=external-secrets-webhook.external-secrets.svc
+  # The controller: host network (see the top), cluster DNS still used for in-cluster
+  # names, metrics on loopback only (on the host network :8080 would listen on every node
+  # address, the tailnet included).
+  - target: {kind: Deployment, name: external-secrets}
+    patch: |-
+      - op: add
+        path: /spec/template/spec/hostNetwork
+        value: true
+      - op: add
+        path: /spec/template/spec/dnsPolicy
+        value: ClusterFirstWithHostNet
+      - op: test
+        path: /spec/template/spec/containers/0/args/1
+        value: --metrics-addr=:8080
+      - op: replace
+        path: /spec/template/spec/containers/0/args/1
+        value: --metrics-addr=127.0.0.1:8080
+  # Upstream sets a request on the controller only. Starting points for this lab (one
+  # store, a handful of secrets); memory limits keep a leak from taking the node down.
+  - target: {kind: Deployment, name: external-secrets}
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources
+        value: {requests: {cpu: 10m, memory: 48Mi}, limits: {cpu: 200m, memory: 160Mi}}
+  - target: {kind: Deployment, name: "external-secrets-cert-controller|external-secrets-webhook"}
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/resources
+        value: {requests: {cpu: 10m, memory: 32Mi}, limits: {cpu: 200m, memory: 128Mi}}
+  # Argo CD manages this component (#43): never prune its CRDs or Namespace.
+  - target: {kind: CustomResourceDefinition}
+    patch: |-
+      apiVersion: apiextensions.k8s.io/v1
+      kind: CustomResourceDefinition
+      metadata:
+        name: any
+        annotations:
+          argocd.argoproj.io/sync-options: Prune=false
+  - target: {kind: Namespace}
+    patch: |-
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: any
+        annotations:
+          argocd.argoproj.io/sync-options: Prune=false

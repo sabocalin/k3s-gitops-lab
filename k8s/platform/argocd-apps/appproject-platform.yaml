@@ -13,12 +13,13 @@ metadata:
     # not exist yet is rejected.
     argocd.argoproj.io/sync-wave: "-1"
 spec:
-  description: Argo CD, cert-manager, ClusterIssuers, and the Applications themselves
+  description: Argo CD, cert-manager, ClusterIssuers, External Secrets, and the Applications themselves
   sourceRepos:
     - https://github.com/sabocalin/k3s-gitops-lab.git
   destinations:
     - {server: https://kubernetes.default.svc, namespace: argocd}
     - {server: https://kubernetes.default.svc, namespace: cert-manager}
+    - {server: https://kubernetes.default.svc, namespace: external-secrets}
     # cert-manager's leader-election Roles live in kube-system (upstream's choice).
     - {server: https://kubernetes.default.svc, namespace: kube-system}
   clusterResourceWhitelist:
@@ -29,6 +30,7 @@ spec:
     - {group: admissionregistration.k8s.io, kind: MutatingWebhookConfiguration}
     - {group: admissionregistration.k8s.io, kind: ValidatingWebhookConfiguration}
     - {group: cert-manager.io, kind: ClusterIssuer}
+    - {group: external-secrets.io, kind: ClusterSecretStore}
   namespaceResourceWhitelist:
     - {group: "", kind: ConfigMap}
     - {group: "", kind: Secret}
