@@ -1,6 +1,7 @@
-# #12: the node's IAM role. Deliberately tiny: read TWO named SSM parameters (the Tailscale
-# OAuth client secret, #12; the DuckDNS token, #36) and register with Session Manager for
-# break-glass shell access.
+# #12: the node's IAM role. Deliberately tiny: read two named SSM parameters (the Tailscale
+# OAuth client secret, #12; the DuckDNS token, #36) and the saved node identity (#64),
+# assume the External Secrets role (#54), and register with Session Manager for break-glass
+# shell access.
 #
 # The parameters themselves are NOT managed by Terraform: its value would end up in state (a
 # refresh reads SecureString values back). Each is created once, out of band, with
@@ -12,6 +13,9 @@ locals {
   tailscale_secret_arn       = "arn:aws:ssm:${var.region}:${var.account_id}:parameter${local.tailscale_secret_parameter}"
   duckdns_token_parameter    = "/k3s-gitops-lab/duckdns/token"
   duckdns_token_arn          = "arn:aws:ssm:${var.region}:${var.account_id}:parameter${local.duckdns_token_parameter}"
+  # #64: the node identity (K3s CAs, Tailscale state, SSH host keys), saved by
+  # scripts/save-node-identity.sh and restored by a new node at first boot.
+  node_identity_prefix = "/k3s-gitops-lab/node-identity"
 }
 
 data "aws_iam_policy_document" "node_assume" {
@@ -53,6 +57,14 @@ data "aws_iam_policy_document" "node" {
     sid       = "AssumeEsoRole"
     actions   = ["sts:AssumeRole"]
     resources = [aws_iam_role.eso.arn]
+  }
+
+  # #64: a rebuilt node restores its identity at first boot (user_data.sh.tftpl). Read
+  # only; the identity is saved from the laptop (scripts/save-node-identity.sh).
+  statement {
+    sid       = "ReadNodeIdentity"
+    actions   = ["ssm:GetParameter"]
+    resources = ["arn:aws:ssm:${var.region}:${var.account_id}:parameter${local.node_identity_prefix}/*"]
   }
 
   # Minimal Session Manager (no port 22, no key pair). NOT AmazonSSMManagedInstanceCore:
