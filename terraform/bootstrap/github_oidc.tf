@@ -1,9 +1,11 @@
 # #16: GitHub Actions authenticates to AWS with OIDC: short-lived credentials, no access
-# keys anywhere. Two roles:
+# keys anywhere. Three roles:
 #
 #   plan   pull requests      read-only (+ the Terraform lock file), never the secret
 #   apply  main, environment  the node only: EC2 instance and disk, its schedules
 #          "production"
+#   lab    main, environment  start, stop and lease the existing node (#63)
+#          "lab"
 #
 # These live in the bootstrap stack on purpose: it is applied only from the laptop (admin
 # + MFA). A CI role that could change IAM could grant itself more; neither role can touch
@@ -279,7 +281,7 @@ data "aws_iam_policy_document" "github_apply" {
     }
   }
 
-  # The nightly stop and the session lease (#61, #63).
+  # The nightly stop and the session lease (#61, #62).
   statement {
     sid = "ProjectSchedules"
     actions = [
@@ -296,4 +298,94 @@ resource "aws_iam_role_policy" "github_apply" {
   name   = "apply-instance-stack"
   role   = aws_iam_role.github_apply.id
   policy = data.aws_iam_policy_document.github_apply.json
+}
+
+# --- lab role (#63) ------------------------------------------------------------------
+# The "Start lab" button (.github/workflows/lab.yml): start, stop or extend the existing
+# node from the GitHub UI or the mobile app. Its own environment ("lab", main only), so
+# the button's jobs never see production's secrets, and production's jobs cannot use this
+# role. No ReadOnlyAccess: only what scripts/lab.sh start|stop|extend calls.
+
+data "aws_iam_policy_document" "lab_trust" {
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.github.arn]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "${local.oidc_host}:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+    # Only jobs in the "lab" environment, which GitHub allows on main only.
+    condition {
+      test     = "StringEquals"
+      variable = "${local.oidc_host}:sub"
+      values   = ["${local.github_sub}:environment:lab"]
+    }
+  }
+}
+
+resource "aws_iam_role" "github_lab" {
+  name                 = "k3s-gitops-lab-github-lab"
+  description          = "GitHub Actions, environment lab: start, stop and lease the node"
+  assume_role_policy   = data.aws_iam_policy_document.lab_trust.json
+  max_session_duration = 3600
+}
+
+data "aws_iam_policy_document" "github_lab" {
+  # Finding the node by tag and waiting for its state. Describe calls have no
+  # resource-level permissions: "*" is the only possible resource.
+  statement {
+    sid       = "DescribeInstances"
+    actions   = ["ec2:DescribeInstances"]
+    resources = ["*"]
+  }
+  # Start and stop the project's node, nothing else: both tags must match.
+  statement {
+    sid       = "StartStopProjectNode"
+    actions   = ["ec2:StartInstances", "ec2:StopInstances"]
+    resources = ["arn:aws:ec2:${var.region}:${var.account_id}:instance/*"]
+    condition {
+      test     = "StringEquals"
+      variable = "aws:ResourceTag/Project"
+      values   = [local.project_tag]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "aws:ResourceTag/Stack"
+      values   = ["instance"]
+    }
+  }
+  # The session lease (#61): a one-off schedule that stops the node later. Without it, a
+  # node started from a phone would run until the nightly stop. This schedule only; the
+  # nightly one stays the apply role's.
+  statement {
+    sid = "SessionLease"
+    actions = [
+      "scheduler:CreateSchedule",
+      "scheduler:UpdateSchedule",
+      "scheduler:DeleteSchedule",
+      "scheduler:GetSchedule",
+    ]
+    resources = ["arn:aws:scheduler:${var.region}:${var.account_id}:schedule/default/k3s-gitops-lab-lease"]
+  }
+  # The lease runs as the autostop role (#62), which can only stop project instances.
+  statement {
+    sid       = "PassAutostopRole"
+    actions   = ["iam:PassRole"]
+    resources = ["arn:aws:iam::${var.account_id}:role/k3s-gitops-lab-autostop"]
+    condition {
+      test     = "StringEquals"
+      variable = "iam:PassedToService"
+      values   = ["scheduler.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role_policy" "github_lab" {
+  name   = "start-stop-lease"
+  role   = aws_iam_role.github_lab.id
+  policy = data.aws_iam_policy_document.github_lab.json
 }

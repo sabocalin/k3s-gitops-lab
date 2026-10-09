@@ -8,6 +8,11 @@
 #
 # Every AWS call is refused unless the session belongs to the lab account: on this laptop
 # the `default` profile is an employer production account.
+#
+# #63: also run by the "Start lab" button (.github/workflows/lab.yml), start|stop|extend
+# only. There, credentials come from GitHub OIDC (no AWS profile), there is no Tailscale
+# (K3s is not checked; the public /health is), and every message also goes to the job
+# summary, which is what the mobile app shows.
 set -eu
 
 ACCOUNT_ID=466558795290
@@ -23,16 +28,25 @@ KNOWN_HOSTS=${KNOWN_HOSTS:-$HOME/.ssh/known_hosts_k3s_gitops_lab}
 KUBECONFIG_FILE=${KUBECONFIG_FILE:-$HOME/.kube/$PROJECT.yaml}
 LEASE_MINUTES=${LEASE_MINUTES:-180}
 
-: "${AWS_PROFILE:=personal}"
+IN_CI=${GITHUB_ACTIONS:-}
+if [ -z "$IN_CI" ]; then
+  : "${AWS_PROFILE:=personal}"
+  export AWS_PROFILE
+fi
 : "${AWS_REGION:=eu-central-1}"
-export AWS_PROFILE AWS_REGION AWS_PAGER=""
+export AWS_REGION AWS_PAGER=""
 
 cd "$(dirname "$0")/.."
 TF_DIR=terraform/instance
 
-say() { printf '==> %s\n' "$*"; }
+summary() { [ -z "${GITHUB_STEP_SUMMARY:-}" ] || printf '%s\n' "$*" >>"$GITHUB_STEP_SUMMARY"; }
+say() {
+  printf '==> %s\n' "$*"
+  summary "- $*"
+}
 die() {
   printf 'lab: %s\n' "$*" >&2
+  summary "- **failed:** $*"
   exit 1
 }
 
@@ -153,7 +167,11 @@ set_lease() { # <instance id>
     --schedule-expression "at($at)" --schedule-expression-timezone UTC \
     --flexible-time-window Mode=OFF --action-after-completion DELETE \
     --target "$target" >/dev/null
-  say "lease: the node stops at $local_end (make extend for more time, make stop when done)"
+  if [ -n "$IN_CI" ]; then
+    say "lease: the node stops at $local_end (run this workflow again: extend for more time, stop when done)"
+  else
+    say "lease: the node stops at $local_end (make extend for more time, make stop when done)"
+  fi
 }
 
 delete_lease() {
@@ -232,8 +250,10 @@ cmd_start() {
   start_instance "$id"
   set_lease "$id"
   show_address "$id"
-  guard_tailscale
-  wait_k3s
+  if [ -z "$IN_CI" ]; then
+    guard_tailscale
+    wait_k3s
+  fi
   wait_dns "$id"
 }
 
@@ -380,7 +400,14 @@ cmd_kubeconfig() {
   say "wrote $KUBECONFIG_FILE (mode 600); run kcreload in your shell"
 }
 
-case ${1:-} in
-  start | stop | extend | status | plan | up | down | kubeconfig) cmd_"$1" ;;
-  *) die "usage: $0 start|stop|extend|status|plan|up|down|kubeconfig" ;;
-esac
+if [ -n "$IN_CI" ]; then
+  case ${1:-} in
+    start | stop | extend) cmd_"$1" ;;
+    *) die "in GitHub Actions only start|stop|extend are allowed" ;;
+  esac
+else
+  case ${1:-} in
+    start | stop | extend | status | plan | up | down | kubeconfig) cmd_"$1" ;;
+    *) die "usage: $0 start|stop|extend|status|plan|up|down|kubeconfig" ;;
+  esac
+fi

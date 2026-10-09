@@ -55,6 +55,11 @@ personal`) and Tailscale up (`tsu up`); `scripts/lab.sh` refuses any other AWS a
 | `make image` | build the container image `lab-api:dev` (linux/arm64) |
 | `make k8s` | render and check, as CI does: `k8s/namespaces/*` (namespace + guardrails, admin) with `k8s/overlays/*` (the app, deployer), and `k8s/platform/*` |
 
+Without the laptop: **Actions → lab → Run workflow** (also in the GitHub mobile app) runs
+`scripts/lab.sh start`, `stop` or `extend` with a lease of 1–4 h, using the
+`k3s-gitops-lab-github-lab` role (#63). The run's summary shows the public IP, the sslip.io
+hostname, DuckDNS and whether `/health` answers. It doesn't wait for K3s over Tailscale.
+
 ## Container image
 
 `app/Dockerfile`, two stages. The build stage installs the locked dependencies with hash
@@ -133,13 +138,14 @@ These are easy to add by accident and break the near-$0 target.
 ## CI access to AWS (GitHub OIDC)
 
 No AWS access keys exist anywhere. GitHub Actions gets one-hour credentials by trading
-a GitHub-signed OIDC token for a role. Both roles are in the bootstrap stack, which is
+a GitHub-signed OIDC token for a role. All three roles are in the bootstrap stack, which is
 applied only from the laptop, so CI can never change its own permissions.
 
 | Role | Assumable by | Can | Cannot |
 |---|---|---|---|
 | `k3s-gitops-lab-github-plan` | `pull_request` runs of this repo | read everything (`ReadOnlyAccess`), write Terraform lock files | write state, change anything, read the Tailscale secret |
 | `k3s-gitops-lab-github-apply` | jobs in the `production` environment (`main` only) | run, start, stop and terminate the project's instance (`t4g.small`/`t4g.medium`, Ubuntu image, project subnet and security group); manage `k3s-gitops-lab-*` schedules; write the instance stack's state | change IAM, the VPC, security groups or the budget; read the secret |
+| `k3s-gitops-lab-github-lab` | jobs in the `lab` environment (`main` only): the "Start lab" button | describe instances; start and stop the project's instance (both tags must match); create, update and delete the session lease schedule, passing it the autostop role | create, resize or terminate anything; touch the nightly stop; read state or secrets |
 
 Network, IAM and budget changes are applied from the laptop (admin with MFA). Details and
 the verification: [docs/learning/16-github-oidc-roles.md](docs/learning/16-github-oidc-roles.md).
