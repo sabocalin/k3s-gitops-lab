@@ -1,0 +1,69 @@
+# #63: the "Start lab" button. Start, stop or extend the lab node from the Actions tab or
+# the GitHub mobile app (Actions -> lab -> Run workflow), without the laptop.
+#
+# It runs scripts/lab.sh, the same code as `make start/stop/extend`, with one-hour AWS
+# credentials from GitHub OIDC for the role k3s-gitops-lab-github-lab (terraform/bootstrap):
+# start and stop the project-tagged instance, describe instances, and manage the session
+# lease schedule. Nothing else: it cannot create, resize or terminate anything.
+#
+# A start always sets the lease (default 3 h), like `make start`: a node started from a
+# phone and forgotten stops by itself. The job summary shows the public IP, the sslip.io
+# hostname, DuckDNS and whether /health answers.
+name: lab
+run-name: lab ${{ inputs.action }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: What to do with the node
+        type: choice
+        options: [start, stop, extend]
+        default: start
+      lease_minutes:
+        description: Lease for start/extend (minutes until it stops itself)
+        type: choice
+        options: ["180", "60", "120", "240"]
+        default: "180"
+
+# Deny everything at workflow level; the job asks for exactly what it needs.
+permissions: {}
+
+# One lifecycle change at a time; a stop never interrupts a start halfway.
+concurrency:
+  group: lab
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-central-1
+  LAB_ROLE: arn:aws:iam::466558795290:role/k3s-gitops-lab-github-lab
+
+jobs:
+  lab:
+    name: lab
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # Its own environment (main only): the OIDC token says environment:lab, the one subject
+    # the lab role trusts. Production's secrets (the bot's key) are not visible here.
+    environment: lab
+    permissions:
+      contents: read # checkout
+      id-token: write # the OIDC token for AWS
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ env.LAB_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Inputs reach the script as environment variables, never pasted into the command.
+      - name: lab.sh
+        env:
+          ACTION: ${{ inputs.action }}
+          LEASE_MINUTES: ${{ inputs.lease_minutes }}
+        run: |
+          echo "### lab $ACTION" >>"$GITHUB_STEP_SUMMARY"
+          scripts/lab.sh "$ACTION"
