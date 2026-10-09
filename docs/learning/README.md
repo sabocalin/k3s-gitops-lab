@@ -43,6 +43,7 @@ verified, and what surprised us. New notes start from [`_template.md`](_template
 | #41 | [CI bumps the image in the gitops overlay (a bot PR that merges itself)](41-gitops-image-bump.md) | 4 |
 | #42 | [The pull path: an Argo CD Application with automated sync, prune and selfHeal](42-argocd-application.md) | 4 |
 | #43 | [App-of-apps: Argo CD manages cert-manager, the issuers, and itself](43-app-of-apps.md) | 4 |
+| #44 | [End to end: one commit, both namespaces](44-end-to-end.md) | 4 |
 | #47 | [Memory headroom before adding ArgoCD and observability](47-memory-headroom.md) | 5 |
 | #57 | [AI code review on pull requests](57-ai-review.md) | 0 |
 | #61 | [`make start / stop / extend / status / up / down`](61-make-lifecycle.md) | 1 |
