@@ -206,7 +206,11 @@ data "aws_iam_policy_document" "github_apply" {
       values   = [local.project_tag]
     }
   }
-  # ...from a Canonical (Ubuntu) image, with a fresh network interface.
+  # ...from a Canonical (Ubuntu) image, with a fresh network interface. Canonical's
+  # images carry the owner ALIAS "amazon", and for an aliased image the ec2:Owner key
+  # evaluates to the alias, not the account id: the id alone denied the first CI launch
+  # (#64). "amazon" covers AWS-vetted publishers only; the exact image is chosen in code
+  # (terraform/instance: owners = Canonical, Ubuntu 24.04 arm64), reviewed like the rest.
   statement {
     sid       = "LaunchFromUbuntuImage"
     actions   = ["ec2:RunInstances"]
@@ -214,7 +218,7 @@ data "aws_iam_policy_document" "github_apply" {
     condition {
       test     = "StringEquals"
       variable = "ec2:Owner"
-      values   = [local.canonical_owner]
+      values   = [local.canonical_owner, "amazon"]
     }
   }
   statement {
