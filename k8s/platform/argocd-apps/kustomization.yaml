@@ -1,6 +1,7 @@
-# #42: what Argo CD deploys. Apply after ../argocd is running: these are instances of its
-# CRDs. Applied by an admin for now (a change here needs a re-apply); from #43 a root
-# Application syncs this directory, so Argo CD manages its own Applications too.
+# #42, #43: what Argo CD deploys. The root Application syncs this directory (app-of-apps),
+# itself included. Bootstrap on a new cluster, once, after ../argocd is running:
+#   kubectl apply -k k8s/platform/argocd-apps
+# From then on a change here is a PR: root applies it within one git poll (3 min).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -8,5 +9,10 @@ kind: Kustomization
 namespace: argocd
 
 resources:
+  - appproject-platform.yaml
   - appproject-gitops.yaml
+  - application-root.yaml
+  - application-argocd.yaml
+  - application-cert-manager.yaml
+  - application-cluster-issuers.yaml
   - application-lab-api-gitops.yaml

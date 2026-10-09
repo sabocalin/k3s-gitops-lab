@@ -1,0 +1,31 @@
+# #43: the Let's Encrypt ClusterIssuers (#36). A separate Application because they are
+# instances of cert-manager's CRDs, validated by its webhook: on a fresh cluster they can
+# only be applied once cert-manager runs. Argo CD does not wait for one Application to be
+# healthy before syncing the next, so the first attempts fail and the retry carries it.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cluster-issuers
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/sabocalin/k3s-gitops-lab.git
+    targetRevision: main
+    path: k8s/platform/cluster-issuers
+  destination:
+    server: https://kubernetes.default.svc
+    # Only cluster-scoped objects; a destination namespace is still required.
+    namespace: cert-manager
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      # On a fresh cluster the ClusterIssuer kind may not exist yet when this syncs: skip
+      # the dry run for kinds the API server does not know. Untested until #52 (rebuild).
+      - SkipDryRunOnMissingResource=true
+      - FailOnSharedResource=true
+    retry:
+      # Longer than the others: covers cert-manager's first start on a fresh cluster.
+      limit: 10
+      backoff: {duration: 10s, factor: 2, maxDuration: 3m}

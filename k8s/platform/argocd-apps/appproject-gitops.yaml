@@ -6,6 +6,9 @@ apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
   name: gitops
+  annotations:
+    # Created before the Applications in the same sync (#43, root).
+    argocd.argoproj.io/sync-wave: "-1"
 spec:
   description: lab-api in the gitops namespace, from this repository only
   # Only this repository, over HTTPS. It is public, so no credentials are stored.

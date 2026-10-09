@@ -1,0 +1,43 @@
+# #43: the cluster-wide components (Argo CD itself, cert-manager, the ClusterIssuers) and
+# the root Application that manages every Application and AppProject. Whatever can create
+# ClusterRoles and bindings can grant itself anything, so this project is as powerful as
+# cluster-admin. The real fence is upstream of it: one repository, its protected main
+# (#6: PR, checks, signed commits), and exact kind lists that render-k8s.sh keeps equal to
+# what these paths render, so a new kind is a reviewed change, not a silent one.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform
+  annotations:
+    # Before the Applications in the same sync (root): an Application whose project does
+    # not exist yet is rejected.
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  description: Argo CD, cert-manager, ClusterIssuers, and the Applications themselves
+  sourceRepos:
+    - https://github.com/sabocalin/k3s-gitops-lab.git
+  destinations:
+    - {server: https://kubernetes.default.svc, namespace: argocd}
+    - {server: https://kubernetes.default.svc, namespace: cert-manager}
+    # cert-manager's leader-election Roles live in kube-system (upstream's choice).
+    - {server: https://kubernetes.default.svc, namespace: kube-system}
+  clusterResourceWhitelist:
+    - {group: "", kind: Namespace}
+    - {group: apiextensions.k8s.io, kind: CustomResourceDefinition}
+    - {group: rbac.authorization.k8s.io, kind: ClusterRole}
+    - {group: rbac.authorization.k8s.io, kind: ClusterRoleBinding}
+    - {group: admissionregistration.k8s.io, kind: MutatingWebhookConfiguration}
+    - {group: admissionregistration.k8s.io, kind: ValidatingWebhookConfiguration}
+    - {group: cert-manager.io, kind: ClusterIssuer}
+  namespaceResourceWhitelist:
+    - {group: "", kind: ConfigMap}
+    - {group: "", kind: Secret}
+    - {group: "", kind: Service}
+    - {group: "", kind: ServiceAccount}
+    - {group: apps, kind: Deployment}
+    - {group: apps, kind: StatefulSet}
+    - {group: networking.k8s.io, kind: NetworkPolicy}
+    - {group: rbac.authorization.k8s.io, kind: Role}
+    - {group: rbac.authorization.k8s.io, kind: RoleBinding}
+    - {group: argoproj.io, kind: Application}
+    - {group: argoproj.io, kind: AppProject}
