@@ -55,7 +55,7 @@ personal`) and Tailscale up (`tsu up`); `scripts/lab.sh` refuses any other AWS a
 | `make image` | build the container image `lab-api:dev` (linux/arm64) |
 | `make k8s` | render and check, as CI does: `k8s/namespaces/*` (namespace + guardrails, admin) with `k8s/overlays/*` (the app, deployer), and `k8s/platform/*` |
 
-Without the laptop: **Actions → lab → Run workflow** (also in the GitHub mobile app) runs
+Without the laptop: **Actions → lab → Run workflow** (on the web, also in a phone's browser) runs
 `scripts/lab.sh start`, `stop` or `extend` with a lease of 1–4 h, using the
 `k3s-gitops-lab-github-lab` role (#63). The run's summary shows the public IP, the sslip.io
 hostname, DuckDNS and whether `/health` answers. It doesn't wait for K3s over Tailscale.

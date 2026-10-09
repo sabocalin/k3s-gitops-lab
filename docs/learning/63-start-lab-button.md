@@ -98,15 +98,29 @@ Before the merge (the workflow can only run from `main`):
 | zizmor 1.30.1 on `lab.yml`, `aws-oidc-check.yml` | no findings |
 | `aws-oidc-check` on this PR: `lab-role-refuses-pull-request` | the assume failed: "lab role refused the pull_request token, as expected" |
 
-After the merge (recorded with Phase 4's close):
-- `aws-oidc-check` dispatched from `main`: the `lab-role` job;
-- the button stops the node, then starts it, reading the summary;
-- a run from a branch other than `main` is refused by the environment;
-- a press from the GitHub mobile app (by the user).
+After the merge (`9f4fd36`):
+
+| Check | Result |
+|---|---|
+| `aws-oidc-check` dispatched from `main`, job `lab-role` | assumed `k3s-gitops-lab-github-lab`; stop and start dry runs allowed; terminate, resize, the nightly schedule (read), the DuckDNS token and Terraform state denied |
+| Button: **stop** | 54 s: stopped, lease removed |
+| Button: **start**, 3 h | 71 s: started, lease set, new IP `18.197.151.67`, DuckDNS updated, `/health` answered from the runner |
+| From the laptop afterwards | `make status` shows the button's lease; tailnet online; all 5 Argo CD apps Synced/Healthy |
+| Negative control: dispatch from a branch `neg-lab-branch` (a copy of `main`) | rejected before any step ran: *Branch "neg-lab-branch" is not allowed to deploy to lab due to environment protection rules* |
+| Pressed by the user, on the web | `lab start` on `main`, triggered by `sabocalin`, 23 s, lease moved |
+| GitHub mobile app | **no Run workflow button found** (user's report). GitHub announced one in July 2024, in the Workflows view (Repository → Actions → Workflows → the workflow); whether that view was tried isn't confirmed. The web page works in a phone's browser |
 
 ## Gotchas
 - **A `workflow_dispatch` workflow appears in the Actions tab only once it is on the
   default branch.** It can't be tried from its own PR.
+- **The mobile app's run list has no Run workflow button.** GitHub documents it in the
+  Workflows view instead (not confirmed here). The issue's "works from the GitHub mobile
+  app" is met through the phone's browser for now. A red run in that list was the branch
+  negative control, not a failed press.
+- **The summary showed the lease in UTC** (the runner's time zone) until `TZ` was set in
+  the workflow.
+- **`start` on a running node only moves the lease.** `start-instances` on a running
+  instance changes nothing, so the default action is safe to press twice.
 - **`AWS_PROFILE` must stay unset in CI.** `lab.sh` used to default it to `personal`. On
   a runner that profile doesn't exist, and the AWS CLI refuses a profile it can't find,
   even with valid OIDC credentials in the environment (not tried; that's why CI mode
