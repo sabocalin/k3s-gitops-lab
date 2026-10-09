@@ -4,7 +4,9 @@
 /ready    readiness: 503 until startup work has finished, while draining, and while
           shutting down.
 /metrics  Prometheus metrics: HTTP requests by route and status, latency, process stats.
-/         which version and which pod answered (useful with several replicas).
+/         which version and which pod answered (useful with several replicas). The version
+          is the git commit the image was built from (APP_VERSION, set by image.yml), so
+          it shows which commit each namespace runs (#44).
 
 Startup work runs as a background task started from the lifespan hook. uvicorn accepts
 no connections until the lifespan startup returns, so work done *inside* it could never

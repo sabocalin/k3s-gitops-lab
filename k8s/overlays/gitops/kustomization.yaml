@@ -18,7 +18,8 @@ labels:
     includeSelectors: false
     includeTemplates: true
 
-# The exact build, by digest, signed by CI (#25): set in the image/ Component, which CI
-# updates through a PR after every publish (#41). Argo CD deploys whatever main says (#42).
+# The exact build, by digest, signed by CI (#25): set in a Component shared with the push
+# overlay (#44), which CI updates through a PR after every publish (#41). Argo CD deploys
+# whatever main says (#42).
 components:
-  - image
+  - ../../components/lab-api-image

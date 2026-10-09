@@ -18,6 +18,7 @@ on:
     branches: [main]
     paths:
       - k8s/base/**
+      - k8s/components/**
       - k8s/overlays/push/**
       - scripts/deploy-push.sh
       - scripts/ci-github-token.sh
