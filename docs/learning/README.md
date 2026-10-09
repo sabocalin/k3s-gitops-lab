@@ -46,6 +46,7 @@ verified, and what surprised us. New notes start from [`_template.md`](_template
 | #44 | [End to end: one commit, both namespaces](44-end-to-end.md) | 4 |
 | #45 | [Rollback drill: git revert the image bump](45-rollback-drill.md) | 4 |
 | #47 | [Memory headroom before adding ArgoCD and observability](47-memory-headroom.md) | 5 |
+| #48 | [Metrics and logs to Grafana Cloud (free tier) via Alloy](48-alloy-grafana-cloud.md) | 5 |
 | #54 | [External Secrets Operator + SSM Parameter Store](54-external-secrets.md) | 5 |
 | #57 | [AI code review on pull requests](57-ai-review.md) | 0 |
 | #61 | [`make start / stop / extend / status / up / down`](61-make-lifecycle.md) | 1 |

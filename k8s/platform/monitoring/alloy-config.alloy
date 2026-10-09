@@ -1,0 +1,138 @@
+// #48: what Alloy collects and where it sends it. Grafana Cloud free tier: 10k active
+// metric series, 50 GB of logs, 14 days. Only what the lab needs is scraped.
+// The token comes from the Secret "grafana-cloud" (ExternalSecret, #54) as an env var;
+// the usernames and URLs are not secret.
+
+logging {
+	level  = "info"
+	format = "logfmt"
+}
+
+// --- metrics ------------------------------------------------------------------------
+
+// lab-api's /metrics in both delivery namespaces (requests by route and status, latency,
+// process stats). One target per pod, on the container port named "http".
+discovery.kubernetes "lab_api" {
+	role = "pod"
+
+	namespaces {
+		names = ["push", "gitops"]
+	}
+
+	selectors {
+		role  = "pod"
+		label = "app.kubernetes.io/name=lab-api"
+	}
+}
+
+discovery.relabel "lab_api" {
+	targets = discovery.kubernetes.lab_api.targets
+
+	rule {
+		source_labels = ["__meta_kubernetes_pod_container_port_name"]
+		regex         = "http"
+		action        = "keep"
+	}
+
+	rule {
+		source_labels = ["__meta_kubernetes_namespace"]
+		target_label  = "namespace"
+	}
+
+	rule {
+		source_labels = ["__meta_kubernetes_pod_name"]
+		target_label  = "pod"
+	}
+}
+
+prometheus.scrape "lab_api" {
+	targets         = discovery.relabel.lab_api.output
+	job_name        = "lab-api"
+	scrape_interval = "30s"
+	forward_to      = [prometheus.relabel.cluster.receiver]
+}
+
+// Pod and Deployment state (readiness for the alert in #49). kube-state-metrics only
+// exposes an allowlisted handful of metrics (kustomization.yaml).
+prometheus.scrape "kube_state_metrics" {
+	targets         = [{"__address__" = "kube-state-metrics.monitoring.svc:8080"}]
+	job_name        = "kube-state-metrics"
+	scrape_interval = "30s"
+	// kube-state-metrics' own namespace/pod labels describe the object, not the exporter.
+	honor_labels = true
+	forward_to   = [prometheus.relabel.cluster.receiver]
+}
+
+prometheus.relabel "cluster" {
+	rule {
+		target_label = "cluster"
+		replacement  = "k3s-gitops-lab"
+	}
+	forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+}
+
+prometheus.remote_write "grafana_cloud" {
+	endpoint {
+		url = "https://prometheus-prod-65-prod-eu-west-2.grafana.net/api/prom/push"
+
+		basic_auth {
+			username = "3650973"
+			password = sys.env("GRAFANA_CLOUD_TOKEN")
+		}
+	}
+}
+
+// --- logs ---------------------------------------------------------------------------
+
+// Every pod's containers, read through the Kubernetes API (pods/log), not from the node's
+// /var/log/pods: no hostPath, so the namespace stays Pod Security "restricted".
+discovery.kubernetes "pods" {
+	role = "pod"
+}
+
+discovery.relabel "pod_logs" {
+	targets = discovery.kubernetes.pods.targets
+
+	rule {
+		source_labels = ["__meta_kubernetes_namespace"]
+		target_label  = "namespace"
+	}
+
+	rule {
+		source_labels = ["__meta_kubernetes_pod_name"]
+		target_label  = "pod"
+	}
+
+	rule {
+		source_labels = ["__meta_kubernetes_pod_container_name"]
+		target_label  = "container"
+	}
+
+	rule {
+		source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+		target_label  = "app"
+	}
+}
+
+loki.source.kubernetes "pods" {
+	targets    = discovery.relabel.pod_logs.output
+	forward_to = [loki.process.cluster.receiver]
+}
+
+loki.process "cluster" {
+	stage.static_labels {
+		values = {cluster = "k3s-gitops-lab"}
+	}
+	forward_to = [loki.write.grafana_cloud.receiver]
+}
+
+loki.write "grafana_cloud" {
+	endpoint {
+		url = "https://logs-prod-012.grafana.net/loki/api/v1/push"
+
+		basic_auth {
+			username = "1821151"
+			password = sys.env("GRAFANA_CLOUD_TOKEN")
+		}
+	}
+}

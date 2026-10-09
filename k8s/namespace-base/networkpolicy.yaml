@@ -68,3 +68,25 @@ spec:
       ports:
         - port: 8089 # the solver's fixed listen port
           protocol: TCP
+---
+# #48: Alloy (namespace monitoring) scrapes the app's /metrics on its container port.
+# Same AND form as the Traefik rule above: Alloy's pods in that namespace, nothing else.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-alloy-to-lab-api-metrics
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: lab-api
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: alloy
+      ports:
+        - port: http
