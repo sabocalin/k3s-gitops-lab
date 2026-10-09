@@ -120,6 +120,7 @@ log "tailscale status: $(tailscale status --json | python3 -c 'import json,sys; 
 # The public repository at main: protected (PR, checks, signed commits, #6).
 git clone --quiet --depth 1 --branch main "${repo_url}" /opt/k3s-gitops-lab
 log "repository cloned at $(git -C /opt/k3s-gitops-lab rev-parse --short HEAD)"
-/opt/k3s-gitops-lab/scripts/node-bootstrap.sh
+# Through bash, not exec: a lost file mode must not stop the boot (it did once, #64).
+bash /opt/k3s-gitops-lab/scripts/node-bootstrap.sh
 
 log "boot script done"

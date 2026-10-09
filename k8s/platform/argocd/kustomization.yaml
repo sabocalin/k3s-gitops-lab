@@ -38,16 +38,19 @@ patches:
   # Upstream sets no requests or limits. Starting points, adjusted from measurements in
   # docs/learning/40-argocd-core.md. Memory limits keep a leak from taking the node down;
   # the controller and repo-server get more CPU (diffing, git, kustomize builds).
+  # #64: 384Mi was enough to adopt existing objects, not to sync a fresh cluster: on the
+  # first rebuild the controller was OOMKilled 6 times syncing every app at once (ESO's
+  # CRDs alone are 2 MB). Limits sized for that burst; idle use stays ~100 Mi.
   - target: {kind: StatefulSet, name: argocd-application-controller}
     patch: |-
       - op: add
         path: /spec/template/spec/containers/0/resources
-        value: {requests: {cpu: 20m, memory: 128Mi}, limits: {cpu: 500m, memory: 384Mi}}
+        value: {requests: {cpu: 20m, memory: 192Mi}, limits: {cpu: 1000m, memory: 1Gi}}
   - target: {kind: Deployment, name: argocd-repo-server}
     patch: |-
       - op: add
         path: /spec/template/spec/containers/0/resources
-        value: {requests: {cpu: 10m, memory: 64Mi}, limits: {cpu: 500m, memory: 384Mi}}
+        value: {requests: {cpu: 10m, memory: 96Mi}, limits: {cpu: 1000m, memory: 640Mi}}
   - target: {kind: Deployment, name: argocd-applicationset-controller}
     patch: |-
       - op: add
