@@ -1,9 +1,11 @@
 # #16: proves the GitHub OIDC roles from GitHub's side (where the trust rules apply).
 #
 #   pull_request       plan role works, but cannot read the secret or write state;
-#                      the apply role refuses a pull_request token (negative control)
+#                      the apply and lab roles refuse a pull_request token (negative control)
 #   workflow_dispatch  apply role from main via the production environment: may stop
-#                      and start the node (dry run), may not touch the network or the secret
+#                      and start the node (dry run), may not touch the network or the secret;
+#                      lab role (#63) via the lab environment: may stop and start the node
+#                      (dry run), may not terminate, launch or read anything else
 #
 # Dry runs (`--dry-run`) ask EC2 "would this be allowed?" without doing it:
 # DryRunOperation = allowed, UnauthorizedOperation = denied.
@@ -27,6 +29,7 @@ env:
   AWS_REGION: eu-central-1
   PLAN_ROLE: arn:aws:iam::466558795290:role/k3s-gitops-lab-github-plan
   APPLY_ROLE: arn:aws:iam::466558795290:role/k3s-gitops-lab-github-apply
+  LAB_ROLE: arn:aws:iam::466558795290:role/k3s-gitops-lab-github-lab
   SECRET: /k3s-gitops-lab/tailscale/oauth-client-secret
   STATE_BUCKET: k3s-gitops-lab-tfstate-466558795290
 
@@ -126,3 +129,71 @@ jobs:
           denied aws ec2 create-vpc --cidr-block 10.99.0.0/16 --dry-run
           denied aws iam create-role --role-name oidc-probe --assume-role-policy-document '{}'
           denied aws ssm get-parameter --name "$SECRET" --with-decryption --query Parameter.Name
+
+  # #63: the "Start lab" button's role.
+  lab-role-refuses-pull-request:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+    steps:
+      - id: assume
+        continue-on-error: true
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ env.LAB_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: The assume must have failed
+        env:
+          OUTCOME: ${{ steps.assume.outcome }}
+        run: |
+          if [ "$OUTCOME" != failure ]; then
+            echo "::error::a pull_request token assumed the lab role"
+            exit 1
+          fi
+          echo "lab role refused the pull_request token, as expected"
+
+  lab-role:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    # Main only (the lab environment's branch policy); the token says environment:lab.
+    environment: lab
+    permissions:
+      id-token: write
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ env.LAB_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Lab role may start and stop the node, nothing else
+        run: |
+          set -u
+          denied() {
+            if out=$("$@" 2>&1); then echo "::error::ALLOWED, expected denied: $1 $2 $3"; exit 1; fi
+            case $out in
+              *AccessDenied* | *UnauthorizedOperation* | *"not authorized"*) echo "denied as expected: $1 $2 $3" ;;
+              *) echo "::error::failed for another reason: $out"; exit 1 ;;
+            esac
+          }
+          dry_run_allowed() {
+            out=$("$@" --dry-run 2>&1) || true
+            case $out in
+              *DryRunOperation*) echo "allowed (dry run): $1 $2 $3" ;;
+              *) echo "::error::expected allowed: $out"; exit 1 ;;
+            esac
+          }
+          aws sts get-caller-identity --query Arn --output text
+          id=$(aws ec2 describe-instances \
+            --filters Name=tag:Project,Values=k3s-gitops-lab Name=instance-state-name,Values=running,stopped \
+            --query 'Reservations[0].Instances[0].InstanceId' --output text)
+          echo "node: $id"
+          dry_run_allowed aws ec2 stop-instances --instance-ids "$id"
+          dry_run_allowed aws ec2 start-instances --instance-ids "$id"
+          denied aws ec2 terminate-instances --instance-ids "$id" --dry-run
+          denied aws ec2 modify-instance-attribute --instance-id "$id" --instance-type t4g.large --dry-run
+          # Read-only probe: a wrongly allowed delete would really delete the nightly stop.
+          denied aws scheduler get-schedule --name k3s-gitops-lab-nightly-stop
+          denied aws ssm get-parameter --name "$SECRET" --with-decryption --query Parameter.Name
+          denied aws s3api get-object --bucket "$STATE_BUCKET" --key instance/terraform.tfstate /dev/null
