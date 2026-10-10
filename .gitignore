@@ -231,3 +231,5 @@ crash.*.log
 !terraform/instance/
 # The Python template above ignores every lib/ directory; this one is shell code.
 !scripts/lib/
+# macOS Finder metadata
+.DS_Store

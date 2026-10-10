@@ -17,7 +17,7 @@ spec:
     name: lab-api
   # Never below 3: one pod down for a rollout or a drain still leaves 2 (the PDB, #32).
   minReplicas: 3
-  # 5 × 128Mi limits fits the 2 GiB node and the namespace quota, with a rollout's surge pod.
+  # 5 × 128Mi limits fits the node (2 GiB then, 4 GiB since #40) and the namespace quota, with a rollout's surge pod.
   maxReplicas: 5
   metrics:
     - type: Resource
