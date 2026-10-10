@@ -6,6 +6,9 @@ A learning project that builds a small but complete platform on a single EC2 nod
 entirely from code, and then deliberately breaks it. Work is tracked on the
 [project board](https://github.com/users/sabocalin/projects/1).
 
+New to the project? [How it works, in plain terms](docs/learning/how-it-works.md) explains
+every layer from the ground up.
+
 ## Architecture
 
 Full diagrams (rendered from the repository at `3eed723`): [infrastructure](docs/architecture/k3s-gitops-lab-architecture.png) ([SVG](docs/architecture/k3s-gitops-lab-architecture.svg)) and [push vs pull delivery](docs/architecture/k3s-gitops-lab-delivery.png) ([SVG](docs/architecture/k3s-gitops-lab-delivery.svg)). The `.html` versions add cards for the lifecycle commands, both delivery paths and the trust boundaries.

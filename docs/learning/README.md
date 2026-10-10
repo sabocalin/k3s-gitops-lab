@@ -3,6 +3,9 @@
 One note per task: what it is, why the project needs it, how it works, how it was
 verified, and what surprised us. New notes start from [`_template.md`](_template.md).
 
+**New here?** Start with [How the whole project works, in plain terms](how-it-works.md):
+every layer explained from the ground up, with links into the notes below.
+
 | Issue | Note | Phase |
 |---|---|---|
 | #2, #8 | [Terraform bootstrap stack (state bucket, budget, contacts)](8-terraform-bootstrap.md) | 0 / 1 |
