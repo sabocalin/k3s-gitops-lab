@@ -17,7 +17,7 @@ spec:
     rollingUpdate:
       # Never go below 3 ready pods: an old pod is removed only after a new one is READY.
       maxUnavailable: 0
-      # One extra pod at a time (4 during a rollout), so memory on the 2 GiB node stays bounded.
+      # One extra pod at a time (4 during a rollout), so memory on the node stays bounded.
       maxSurge: 1
   # Written here, not by a Kustomize label transformer: that transformer would also rewrite
   # the peer selectors in NetworkPolicies (#33). Immutable after creation.
@@ -55,7 +55,7 @@ spec:
               containerPort: 8000
           # #30: measured idle 3m CPU / 37Mi, about 75m at 158 req/s over 3 pods, memory flat.
           # requests: what the scheduler reserves, and the base HPA (#34) measures CPU against.
-          # limits: memory over 128Mi is OOM-killed (protects the 2 GiB node); CPU over 250m is
+          # limits: memory over 128Mi is OOM-killed (protects the node); CPU over 250m is
           # throttled, not killed.
           resources:
             requests:
