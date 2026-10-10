@@ -12,9 +12,9 @@ COSIGN_VERSION=3.1.3
 # kustomize 5.8.1 (5.8.2 was under 7 days old when pinned). No attestation upstream: the
 # hashes match the release's checksums.txt and my own download.
 KUSTOMIZE_VERSION=5.8.1
-# kubectl (#39): the cluster's own version (K3s v1.36.4). Hashes from dl.k8s.io's
+# kubectl (#39): the cluster's own version (K3s v1.37.1, #51). Hashes from dl.k8s.io's
 # kubectl.sha256 files, matching my own download.
-KUBECTL_VERSION=1.36.4
+KUBECTL_VERSION=1.37.1
 TOOLS=${LINT_TOOLS_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/k3s-gitops-lab/tools}
 
 tools_die() {
@@ -35,9 +35,9 @@ tool_asset() {
     cosign:Linux-x86_64) echo "cosign-linux-amd64 4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71" ;;
     cosign:Darwin-arm64) echo "cosign-darwin-arm64 5cf948c2f4dfe59687bdd0b8523709067383e03982cc543475c8a7dc70e92a76" ;;
     kustomize:Linux-x86_64) echo "kustomize_v${KUSTOMIZE_VERSION}_linux_amd64.tar.gz 029a7f0f4e1932c52a0476cf02a0fd855c0bb85694b82c338fc648dcb53a819d" ;;
-    kubectl:Linux-x86_64) echo "bin/linux/amd64/kubectl 8b8f088da2dab964f853b38464033b1be15ede2839eca751482357c45abdd05a" ;;
-    kubectl:Linux-aarch64) echo "bin/linux/arm64/kubectl 0ecf44450ee6063bf19dd166a103ee6df4a9034455c2abce626e6eea657d73fb" ;;
-    kubectl:Darwin-arm64) echo "bin/darwin/arm64/kubectl c9e4f713d6fee0043a3d835cca13077cda2bc0973840eb9779360df0b5bdfc69" ;;
+    kubectl:Linux-x86_64) echo "bin/linux/amd64/kubectl 65691ff77eb6fa44c908b77a1082c9f092c3b9733b5cefabec0d1104890e21a8" ;;
+    kubectl:Linux-aarch64) echo "bin/linux/arm64/kubectl ff749f4b78d9c4f1ec87307df9b50119ed819e2094aa9810cb9acffc3286c8c7" ;;
+    kubectl:Darwin-arm64) echo "bin/darwin/arm64/kubectl fd65982c97ddad3106754b69ffa196d0e543aa591930ae52aed1adfb92f8c77f" ;;
     kustomize:Darwin-arm64) echo "kustomize_v${KUSTOMIZE_VERSION}_darwin_arm64.tar.gz 8886f8a78474e608cc81234f729fda188a9767da23e28925802f00ece2bab288" ;;
     *) return 1 ;;
   esac
