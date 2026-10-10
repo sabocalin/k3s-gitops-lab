@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>k3s-gitops-lab architecture</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500;600&amp;family=Noto+Serif:ital@0;1&amp;family=Noto+Sans+KR:wght@400;500;600&amp;family=Noto+Serif+KR:wght@400&amp;family=Noto+Sans+TC:wght@400;500;600&amp;family=Noto+Serif+TC:wght@400&amp;display=swap" rel="stylesheet">
+  <style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --color-paper: #f5f5f5; --color-paper-2: #ececec; --color-ink: #2d3142;
+  --color-muted: #4f5d75; --color-soft: #7a8399; --color-rule: rgba(45,49,66,0.12);
+  --color-accent: #eb6c36; --color-link: #2e5aa8;
+  --font-sans: 'Geist', system-ui, sans-serif;
+  --font-serif: 'Instrument Serif', 'Noto Serif', 'Times New Roman', serif;
+  --font-mono: 'Geist Mono', ui-monospace, Menlo, monospace;
+}
+body { font-family: var(--font-sans); background: var(--color-paper); color: var(--color-ink);
+       min-height: 100vh; padding: 3rem 2rem; }
+.container { max-width: 1880px; margin: 0 auto; }
+.header { margin-bottom: 2rem; }
+.header-eyebrow { font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500;
+  letter-spacing: 0.18em; text-transform: uppercase; color: var(--color-muted); margin-bottom: 0.75rem; }
+h1 { font-family: var(--font-serif); font-size: clamp(1.75rem, 3vw + 1rem, 2.5rem); font-weight: 400;
+  letter-spacing: -0.02em; line-height: 1.1; margin-bottom: 0.5rem; }
+.subtitle { font-size: 1rem; line-height: 1.55; color: var(--color-muted); max-width: 72ch; }
+.diagram-container { overflow-x: auto; }
+svg { width: 100%; min-width: 1300px; display: block; }
+.cards { display: grid; grid-template-columns: 1.25fr 1fr 0.9fr; gap: 1rem; margin-top: 1.5rem; }
+@media (max-width: 960px) { .cards { grid-template-columns: 1fr; } }
+.card { background: #ffffff; border-radius: 6px; border: 1px solid var(--color-rule); padding: 1.25rem; }
+.eyebrow { font-family: var(--font-mono); font-size: 0.62rem; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--color-soft); margin-bottom: 0.5rem; }
+.card-header { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.875rem; padding-bottom: 0.875rem;
+  border-bottom: 1px solid rgba(45,49,66,0.08); }
+.card-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.card-dot.ink { background: var(--color-ink); } .card-dot.muted { background: var(--color-muted); }
+.card-dot.coral { background: var(--color-accent); } .card-dot.link { background: var(--color-link); }
+.card h3 { font-size: 0.875rem; font-weight: 600; letter-spacing: -0.005em; }
+.card ul { list-style: none; color: var(--color-muted); font-size: 0.8125rem; line-height: 1.55; }
+.card li { margin-bottom: 0.3rem; padding-left: 0.875rem; position: relative; }
+.card li::before { content: '—'; position: absolute; left: 0; color: rgba(45,49,66,0.25); font-size: 0.75rem; }
+.cmd { width: 100%; border-collapse: collapse; font-size: 0.8125rem; color: var(--color-muted); }
+.cmd td { padding: 0.32rem 0; vertical-align: top; border-bottom: 1px solid rgba(45,49,66,0.06); }
+.cmd td:first-child { font-family: var(--font-mono); font-size: 0.75rem; color: var(--color-ink);
+  white-space: nowrap; padding-right: 1rem; }
+.cmd tr:last-child td { border-bottom: none; }
+code { font-family: var(--font-mono); font-size: 0.75rem; color: var(--color-ink); }
+.footer { margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid rgba(45,49,66,0.10);
+  font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.06em; color: var(--color-soft);
+  display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; }
+</style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <p class="header-eyebrow">Architecture · k3s-gitops-lab</p>
+      <h1>k3s-gitops-lab, end to end</h1>
+      <p class="subtitle">One protected branch drives a single-node K3s cluster on EC2. The public reaches it only over HTTPS, the admin and CI only over Tailscale; CI holds no stored keys, only short-lived OIDC tokens, and the node is rebuilt from git every week.</p>
+    </div>
+    <div class="diagram-container">
+<svg viewBox="0 0 1840 1144" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="k3s-gitops-lab-architecture-title k3s-gitops-lab-architecture-desc">
+<title id="k3s-gitops-lab-architecture-title">k3s-gitops-lab infrastructure</title>
+<desc id="k3s-gitops-lab-architecture-desc">Architecture of the k3s-gitops-lab project: a GitHub repository whose protected main branch drives a single-node K3s cluster on one EC2 instance in AWS eu-central-1, reached publicly only on HTTPS through DuckDNS and Traefik and administratively only over a Tailscale tailnet, with a push path (GitHub Actions joins the tailnet and applies namespace push) and a pull path (Argo CD polls main and syncs namespace gitops), Alloy shipping metrics and logs to Grafana Cloud, and a weekly rebuild from git.</desc>
+<defs>
+<marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+<marker id="arrow-ink" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2d3142"/></marker>
+<marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#eb6c36"/></marker>
+<marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker>
+<marker id="arrow-soft" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#7a8399"/></marker>
+</defs>
+<rect width="100%" height="100%" fill="#f5f5f5"/>
+<rect x="40" y="40" width="1504" height="188" rx="8" fill="rgba(45,49,66,0.025)" stroke="rgba(45,49,66,0.14)" stroke-width="0.8"/>
+<rect x="52" y="46" width="478" height="14" rx="2" fill="#f5f5f5"/>
+<text x="59" y="56" fill="rgba(45,49,66,0.62)" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">GITHUB · sabocalin/k3s-gitops-lab · ENVIRONMENTS production + lab (main only)</text>
+<rect x="40" y="276" width="272" height="372" rx="8" fill="rgba(45,49,66,0.025)" stroke="rgba(45,49,66,0.14)" stroke-width="0.8"/>
+<rect x="184" y="282" width="130" height="14" rx="2" fill="#f5f5f5"/>
+<text x="191" y="292" fill="rgba(45,49,66,0.62)" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">TAILNET · TAILSCALE</text>
+<rect x="40" y="688" width="272" height="356" rx="8" fill="rgba(45,49,66,0.025)" stroke="rgba(45,49,66,0.14)" stroke-width="0.8"/>
+<rect x="52" y="694" width="106" height="14" rx="2" fill="#f5f5f5"/>
+<text x="59" y="704" fill="rgba(45,49,66,0.62)" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">PUBLIC INTERNET</text>
+<rect x="352" y="276" width="1192" height="768" rx="8" fill="rgba(45,49,66,0.025)" stroke="rgba(45,49,66,0.14)" stroke-width="0.8"/>
+<rect x="476" y="282" width="274" height="14" rx="2" fill="#f5f5f5"/>
+<text x="483" y="292" fill="rgba(45,49,66,0.62)" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">AWS ACCOUNT · eu-central-1 · NO STATIC KEYS</text>
+<rect x="1584" y="860" width="216" height="184" rx="8" fill="rgba(45,49,66,0.025)" stroke="rgba(45,49,66,0.14)" stroke-width="0.8"/>
+<rect x="1596" y="866" width="136" height="14" rx="2" fill="#f5f5f5"/>
+<text x="1603" y="876" fill="rgba(45,49,66,0.62)" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">GRAFANA CLOUD · SAAS</text>
+<rect x="376" y="316" width="864" height="708" rx="6" fill="none" stroke="rgba(45,49,66,0.30)" stroke-width="0.9" stroke-dasharray="6,4"/>
+<rect x="476" y="309" width="382" height="14" rx="2" fill="#f5f5f5"/>
+<text x="483" y="319" fill="rgba(45,49,66,0.62)" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.1em">VPC 10.42.0.0/16 · 3 PUBLIC /24 SUBNETS · IGW · NO NAT GATEWAY</text>
+<rect x="400" y="356" width="816" height="648" rx="6" fill="rgba(235,108,54,0.03)" stroke="rgba(235,108,54,0.55)" stroke-width="1" stroke-dasharray="4,4"/>
+<rect x="476" y="349" width="458" height="14" rx="2" fill="#f5f5f5"/>
+<text x="483" y="359" fill="rgba(214,90,38,0.95)" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.1em">EC2 t4g.medium · UBUNTU 24.04 arm64 · SG INBOUND 80/443 ONLY · IMDSv2 HOP 1</text>
+<text x="64" y="584" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0.14em">TAILNET POLICY</text>
+<text x="64" y="600" fill="#7a8399" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0.04em">tag:ci  → tag:k3s tcp:6443 only</text>
+<text x="64" y="614" fill="#7a8399" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0.04em">admin   → tag:k3s SSH + 6443</text>
+<text x="64" y="628" fill="#7a8399" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0.04em">tests deny tag:ci → 22, 10250</text>
+<text x="424" y="992" fill="#7a8399" font-size="8" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0.04em">K3s v1.37.1 single node · pods 10.52.0.0/16 · services 10.53.0.0/16 · Secrets encrypted at rest · CoreDNS → 169.254.169.253</text>
+<path d="M 840,104 L 840,92 Q 840,84 832,84 L 180,84 Q 172,84 172,92 L 172,104" fill="none" stroke="#2d3142" stroke-width="1.6" marker-end="url(#arrow-ink)"/>
+<path d="M 800,136 L 736,136" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+<path d="M 736,168 L 800,168" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+<path d="M 536,152 L 472,152" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+<path d="M 172,208 L 172,320" fill="none" stroke="#2d3142" stroke-width="1.6" marker-end="url(#arrow-ink)"/>
+<path d="M 280,360 L 324,360 Q 332,360 332,368 L 332,440 Q 332,448 340,448 L 424,448" fill="none" stroke="#2d3142" stroke-width="1.6" marker-end="url(#arrow-ink)"/>
+<path d="M 600,540 L 600,696 Q 600,704 608,704 L 732,704 Q 740,704 740,712 L 740,736" fill="none" stroke="#2d3142" stroke-width="1.6" marker-end="url(#arrow-ink)"/>
+<path d="M 280,512 L 424,512" fill="none" stroke="#4f5d75" stroke-width="1.0" marker-end="url(#arrow)"/>
+<path d="M 448,208 L 448,420" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+<path d="M 984,208 L 984,420" fill="none" stroke="#2d3142" stroke-width="1.6" stroke-dasharray="6,4" marker-end="url(#arrow-ink)"/>
+<path d="M 968,484 L 920,484" fill="none" stroke="#2d3142" stroke-width="1.6" stroke-dasharray="6,4" marker-end="url(#arrow-ink)"/>
+<path d="M 176,872 L 176,812" fill="none" stroke="#2e5aa8" stroke-width="1.4" marker-end="url(#arrow-link)"/>
+<path d="M 280,896 L 424,896" fill="none" stroke="#2e5aa8" stroke-width="1.4" marker-end="url(#arrow-link)"/>
+<path d="M 280,928 L 396,928" fill="none" stroke="#7a8399" stroke-width="1.2" stroke-dasharray="2,3"/>
+<line x1="396" y1="921" x2="396" y2="935" stroke="#eb6c36" stroke-width="2"/>
+<path d="M 382,924 L 390,932 M 382,932 L 390,924" stroke="#eb6c36" stroke-width="1.4"/>
+<path d="M 648,912 L 800,912 Q 808,912 808,904 L 808,864" fill="none" stroke="#2e5aa8" stroke-width="1.4" marker-end="url(#arrow-link)"/>
+<path d="M 808,676 L 808,736" fill="none" stroke="#4f5d75" stroke-width="1.0" marker-end="url(#arrow)"/>
+<path d="M 472,540 L 472,692 Q 472,700 464,700 L 344,700 Q 336,700 336,708 L 336,764 Q 336,772 328,772 L 280,772" fill="none" stroke="#4f5d75" stroke-width="1.0" marker-end="url(#arrow)"/>
+<path d="M 520,736 L 520,540" fill="none" stroke="#4f5d75" stroke-width="1.0" marker-end="url(#arrow)"/>
+<path d="M 1080,848 L 1080,880" fill="none" stroke="#4f5d75" stroke-width="1.0" marker-end="url(#arrow)"/>
+<path d="M 968,928 L 868,928 Q 860,928 860,920 L 860,864" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+<path d="M 1192,960 L 1604,960" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+<path d="M 1192,800 L 1280,800" fill="none" stroke="#4f5d75" stroke-width="1.0" marker-end="url(#arrow)"/>
+<path d="M 1400,760 L 1400,676" fill="none" stroke="#4f5d75" stroke-width="1.0" marker-end="url(#arrow)"/>
+<path d="M 1280,900 L 1218,900" fill="none" stroke="#4f5d75" stroke-width="1.0" marker-end="url(#arrow)"/>
+<path d="M 1412,208 L 1412,324" fill="none" stroke="#4f5d75" stroke-width="1.0" marker-end="url(#arrow)"/>
+<path d="M 1232,208 L 1232,252 Q 1232,260 1240,260 L 1308,260 Q 1316,260 1316,268 L 1316,324" fill="none" stroke="#4f5d75" stroke-width="1.0" marker-end="url(#arrow)"/>
+<rect x="610" y="65" width="100" height="12" rx="2" fill="#f5f5f5"/>
+<text x="660" y="74" fill="#2d3142" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">ON MERGE · k8s/**</text>
+<rect x="747" y="117" width="42" height="12" rx="2" fill="#f5f5f5"/>
+<text x="768" y="126" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">APP/**</text>
+<rect x="747" y="175" width="42" height="12" rx="2" fill="#f5f5f5"/>
+<text x="768" y="184" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">BOT PR</text>
+<rect x="483" y="133" width="42" height="12" rx="2" fill="#f5f5f5"/>
+<text x="504" y="142" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">SIGNED</text>
+<rect x="179" y="242" width="84" height="12" rx="2" fill="#f5f5f5"/>
+<text x="221" y="251" fill="#2d3142" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">JOIN AS tag:ci</text>
+<rect x="348" y="429" width="63" height="12" rx="2" fill="#f5f5f5"/>
+<text x="380" y="438" fill="#2d3142" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">:6443 ONLY</text>
+<rect x="607" y="614" width="74" height="12" rx="2" fill="#f5f5f5"/>
+<text x="644" y="623" fill="#2d3142" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">APPLY · RBAC</text>
+<rect x="300" y="493" width="79" height="12" rx="2" fill="#f5f5f5"/>
+<text x="340" y="502" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">SSH · KUBECTL</text>
+<rect x="455" y="242" width="63" height="12" rx="2" fill="#f5f5f5"/>
+<text x="486" y="251" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">PULL IMAGE</text>
+<rect x="991" y="242" width="68" height="12" rx="2" fill="#f5f5f5"/>
+<text x="1025" y="251" fill="#2d3142" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">POLL ≤3 MIN</text>
+<rect x="928" y="465" width="31" height="12" rx="2" fill="#f5f5f5"/>
+<text x="944" y="474" fill="#2d3142" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">SYNC</text>
+<rect x="183" y="836" width="47" height="12" rx="2" fill="#f5f5f5"/>
+<text x="206" y="845" fill="#2e5aa8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">RESOLVE</text>
+<rect x="314" y="877" width="84" height="12" rx="2" fill="#f5f5f5"/>
+<text x="356" y="886" fill="#2e5aa8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">HTTPS · 80/443</text>
+<rect x="293" y="909" width="74" height="12" rx="2" fill="#f5f5f5"/>
+<text x="330" y="918" fill="#c2531f" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">NO 22 / 6443</text>
+<rect x="692" y="893" width="63" height="12" rx="2" fill="#f5f5f5"/>
+<text x="724" y="902" fill="#2e5aa8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">HOST ROUTE</text>
+<rect x="815" y="712" width="31" height="12" rx="2" fill="#f5f5f5"/>
+<text x="830" y="721" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">CERT</text>
+<rect x="381" y="614" width="84" height="12" rx="2" fill="#f5f5f5"/>
+<text x="423" y="623" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">UPDATE AT BOOT</text>
+<rect x="527" y="654" width="47" height="12" rx="2" fill="#f5f5f5"/>
+<text x="550" y="663" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">UPGRADE</text>
+<rect x="1087" y="858" width="36" height="12" rx="2" fill="#f5f5f5"/>
+<text x="1105" y="867" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">TOKEN</text>
+<rect x="893" y="909" width="42" height="12" rx="2" fill="#f5f5f5"/>
+<text x="914" y="918" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">SCRAPE</text>
+<rect x="1358" y="967" width="84" height="12" rx="2" fill="#f5f5f5"/>
+<text x="1400" y="976" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">METRICS + LOGS</text>
+<rect x="1204" y="781" width="63" height="12" rx="2" fill="#f5f5f5"/>
+<text x="1236" y="790" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">IMDS → STS</text>
+<rect x="1407" y="712" width="31" height="12" rx="2" fill="#f5f5f5"/>
+<text x="1422" y="721" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">READ</text>
+<rect x="1234" y="881" width="31" height="12" rx="2" fill="#f5f5f5"/>
+<text x="1249" y="890" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">STOP</text>
+<rect x="1419" y="242" width="84" height="12" rx="2" fill="#f5f5f5"/>
+<text x="1461" y="251" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">OIDC · ENV LAB</text>
+<rect x="1323" y="286" width="63" height="12" rx="2" fill="#f5f5f5"/>
+<text x="1354" y="295" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">APPLY ROLE</text>
+<g data-node="deploy">
+<rect x="72" y="104" width="200" height="104" rx="6" fill="#f5f5f5"/>
+<rect x="72" y="104" width="200" height="104" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+<rect x="80" y="111" width="20" height="12" rx="2" fill="none" stroke="rgba(45,49,66,0.40)" stroke-width="0.8"/>
+<text x="90.0" y="120" fill="#2d3142" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">CD</text>
+<text x="264" y="124" fill="#2d3142" font-size="7" font-family="'Geist Mono', monospace" text-anchor="end" letter-spacing="0.08em" opacity="0.9">PUSH</text>
+<text x="172" y="140" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">deploy-push.yml</text>
+<text x="172" y="156" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">env production · on merge</text>
+<text x="172" y="170" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">render · verify cosign sig</text>
+<text x="172" y="184" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">OIDC → Tailscale + K3s API</text>
+</g>
+<g data-node="ghcr">
+<rect x="312" y="104" width="160" height="104" rx="6" fill="#f5f5f5"/>
+<rect x="312" y="104" width="160" height="104" rx="6" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+<rect x="320" y="111" width="25" height="12" rx="2" fill="none" stroke="rgba(79,93,117,0.50)" stroke-width="0.8"/>
+<text x="332.5" y="120" fill="#4f5d75" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">OCI</text>
+<text x="392" y="140" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">GHCR</text>
+<text x="392" y="156" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">lab-api@sha256 digest</text>
+<text x="392" y="170" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">public package · arm64</text>
+<text x="392" y="184" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">cosign + SLSA + SBOM</text>
+</g>
+<g data-node="image">
+<rect x="536" y="104" width="200" height="104" rx="6" fill="#f5f5f5"/>
+<rect x="536" y="104" width="200" height="104" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+<rect x="544" y="111" width="20" height="12" rx="2" fill="none" stroke="rgba(45,49,66,0.40)" stroke-width="0.8"/>
+<text x="554.0" y="120" fill="#2d3142" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">CI</text>
+<text x="636" y="140" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">image.yml</text>
+<text x="636" y="156" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">arm64 build · trivy · smoke</text>
+<text x="636" y="170" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">push → attest → cosign sign</text>
+<text x="636" y="184" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">bump job: bot PR, auto-merge</text>
+</g>
+<g data-node="main">
+<rect x="800" y="104" width="200" height="104" rx="6" fill="#f5f5f5"/>
+<rect x="800" y="104" width="200" height="104" rx="6" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1"/>
+<rect x="808" y="111" width="25" height="12" rx="2" fill="none" stroke="rgba(235,108,54,0.50)" stroke-width="0.8"/>
+<text x="820.5" y="120" fill="#eb6c36" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">GIT</text>
+<text x="900" y="140" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">main</text>
+<text x="900" y="156" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">ruleset: PR · signed · squash</text>
+<text x="900" y="170" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">required: k8s-render, ruff,</text>
+<text x="900" y="184" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">pytest, terraform-lint, zizmor</text>
+<text x="900" y="198" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">pin: components/lab-api-image</text>
+</g>
+<g data-node="rebuild">
+<rect x="1056" y="104" width="200" height="104" rx="6" fill="#f5f5f5"/>
+<rect x="1056" y="104" width="200" height="104" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+<rect x="1064" y="111" width="40" height="12" rx="2" fill="none" stroke="rgba(45,49,66,0.40)" stroke-width="0.8"/>
+<text x="1084.0" y="120" fill="#2d3142" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">WEEKLY</text>
+<text x="1156" y="140" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">rebuild.yml</text>
+<text x="1156" y="156" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">Sun 03:17 UTC + on demand</text>
+<text x="1156" y="170" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">destroy + apply (env prod)</text>
+<text x="1156" y="184" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">→ deploy-push · HTTPS check</text>
+<text x="1156" y="198" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">then stops the node</text>
+</g>
+<g data-node="lab">
+<rect x="1312" y="104" width="200" height="104" rx="6" fill="#f5f5f5"/>
+<rect x="1312" y="104" width="200" height="104" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+<rect x="1320" y="111" width="40" height="12" rx="2" fill="none" stroke="rgba(45,49,66,0.40)" stroke-width="0.8"/>
+<text x="1340.0" y="120" fill="#2d3142" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">BUTTON</text>
+<text x="1412" y="140" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">lab.yml · Start lab</text>
+<text x="1412" y="156" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">env lab · workflow_dispatch</text>
+<text x="1412" y="170" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">start · stop · extend 1–4 h</text>
+<text x="1412" y="184" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">runs scripts/lab.sh</text>
+</g>
+<g data-node="runner">
+<rect x="72" y="320" width="208" height="80" rx="6" fill="#f5f5f5"/>
+<rect x="72" y="320" width="208" height="80" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+<rect x="80" y="327" width="40" height="12" rx="2" fill="none" stroke="rgba(45,49,66,0.22)" stroke-width="0.8"/>
+<text x="100.0" y="336" fill="#7a8399" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">tag:ci</text>
+<text x="176" y="356" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">CI runner (ephemeral)</text>
+<text x="176" y="372" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">GitHub OIDC → Tailscale key</text>
+<text x="176" y="386" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">device removed after the job</text>
+</g>
+<g data-node="laptop">
+<rect x="72" y="472" width="208" height="80" rx="6" fill="#f5f5f5"/>
+<rect x="72" y="472" width="208" height="80" rx="6" fill="rgba(79,93,117,0.10)" stroke="#7a8399" stroke-width="1"/>
+<rect x="80" y="479" width="35" height="12" rx="2" fill="none" stroke="rgba(122,131,153,0.40)" stroke-width="0.8"/>
+<text x="97.5" y="488" fill="#7a8399" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">ADMIN</text>
+<text x="176" y="508" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Admin laptop</text>
+<text x="176" y="524" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">aws login · make · terraform</text>
+<text x="176" y="538" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">ansible · kubectl via tsu</text>
+</g>
+<g data-node="dns">
+<rect x="72" y="732" width="208" height="80" rx="6" fill="#f5f5f5"/>
+<rect x="72" y="732" width="208" height="80" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+<rect x="80" y="739" width="25" height="12" rx="2" fill="none" stroke="rgba(45,49,66,0.22)" stroke-width="0.8"/>
+<text x="92.5" y="748" fill="#7a8399" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">DNS</text>
+<text x="176" y="768" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">DuckDNS</text>
+<text x="176" y="784" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">k3s-gitops-lab.duckdns.org</text>
+<text x="176" y="798" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">A → node IP, set at boot</text>
+</g>
+<g data-node="users">
+<rect x="72" y="872" width="208" height="80" rx="6" fill="#f5f5f5"/>
+<rect x="72" y="872" width="208" height="80" rx="6" fill="rgba(79,93,117,0.10)" stroke="#7a8399" stroke-width="1"/>
+<rect x="80" y="879" width="30" height="12" rx="2" fill="none" stroke="rgba(122,131,153,0.40)" stroke-width="0.8"/>
+<text x="95.0" y="888" fill="#7a8399" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">USER</text>
+<text x="176" y="908" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Internet users</text>
+<text x="176" y="924" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">browser · curl</text>
+<text x="176" y="938" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">HTTP is 301&#x27;d to HTTPS</text>
+</g>
+<g data-node="server">
+<rect x="424" y="420" width="224" height="120" rx="6" fill="#f5f5f5"/>
+<rect x="424" y="420" width="224" height="120" rx="6" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1"/>
+<rect x="432" y="427" width="25" height="12" rx="2" fill="none" stroke="rgba(235,108,54,0.50)" stroke-width="0.8"/>
+<text x="444.5" y="436" fill="#eb6c36" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">K3S</text>
+<text x="536" y="456" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">k3s-node · K3s server</text>
+<text x="536" y="472" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">API :6443 · tailnet only</text>
+<text x="536" y="486" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">authn: GitHub OIDC (env prod)</text>
+<text x="536" y="500" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">tailscaled tag:k3s · --ssh</text>
+<text x="536" y="514" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">duckdns · identity from SSM</text>
+</g>
+<g data-node="gitops">
+<rect x="696" y="420" width="224" height="128" rx="6" fill="#f5f5f5"/>
+<rect x="696" y="420" width="224" height="128" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+<rect x="704" y="427" width="55" height="12" rx="2" fill="none" stroke="rgba(45,49,66,0.40)" stroke-width="0.8"/>
+<text x="731.5" y="436" fill="#2d3142" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">NAMESPACE</text>
+<text x="912" y="440" fill="#2d3142" font-size="7" font-family="'Geist Mono', monospace" text-anchor="end" letter-spacing="0.08em" opacity="0.9">PULL</text>
+<text x="808" y="456" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">gitops</text>
+<text x="808" y="472" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">lab-api · HPA 3–5 · PDB 2</text>
+<text x="808" y="486" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">Service · no Ingress</text>
+<text x="808" y="500" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">NetPol: deny-all, Traefik, Alloy</text>
+<text x="808" y="514" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">Quota · LimitRange · PSA restricted</text>
+</g>
+<g data-node="argo">
+<rect x="968" y="420" width="224" height="128" rx="6" fill="#f5f5f5"/>
+<rect x="968" y="420" width="224" height="128" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+<rect x="976" y="427" width="40" height="12" rx="2" fill="none" stroke="rgba(45,49,66,0.40)" stroke-width="0.8"/>
+<text x="996.0" y="436" fill="#2d3142" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">GITOPS</text>
+<text x="1080" y="456" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Argo CD core v3.5.3</text>
+<text x="1080" y="472" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">root app-of-apps · 10 apps</text>
+<text x="1080" y="486" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">argocd · cert-manager · issuers</text>
+<text x="1080" y="500" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">ESO · stores · monitoring</text>
+<text x="1080" y="514" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">system-upgrade · plans · gitops</text>
+</g>
+<g data-node="cm">
+<rect x="696" y="580" width="224" height="96" rx="6" fill="#f5f5f5"/>
+<rect x="696" y="580" width="224" height="96" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+<rect x="704" y="587" width="25" height="12" rx="2" fill="none" stroke="rgba(45,49,66,0.40)" stroke-width="0.8"/>
+<text x="716.5" y="596" fill="#2d3142" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">TLS</text>
+<text x="808" y="616" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">cert-manager v1.21</text>
+<text x="808" y="632" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">ClusterIssuers LE staging/prod</text>
+<text x="808" y="646" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">ACME HTTP-01 via Traefik :80</text>
+</g>
+<g data-node="push">
+<rect x="696" y="736" width="224" height="128" rx="6" fill="#f5f5f5"/>
+<rect x="696" y="736" width="224" height="128" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+<rect x="704" y="743" width="55" height="12" rx="2" fill="none" stroke="rgba(45,49,66,0.40)" stroke-width="0.8"/>
+<text x="731.5" y="752" fill="#2d3142" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">NAMESPACE</text>
+<text x="912" y="756" fill="#2d3142" font-size="7" font-family="'Geist Mono', monospace" text-anchor="end" letter-spacing="0.08em" opacity="0.9">PUSH</text>
+<text x="808" y="772" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">push</text>
+<text x="808" y="788" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">lab-api · HPA 3–5 · PDB 2</text>
+<text x="808" y="802" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">Service · Ingress · TLS</text>
+<text x="808" y="816" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">NetPol: deny-all, Traefik, Alloy</text>
+<text x="808" y="830" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">Quota · LimitRange · PSA restricted</text>
+</g>
+<g data-node="suc">
+<rect x="424" y="736" width="224" height="96" rx="6" fill="#f5f5f5"/>
+<rect x="424" y="736" width="224" height="96" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+<rect x="432" y="743" width="45" height="12" rx="2" fill="none" stroke="rgba(45,49,66,0.40)" stroke-width="0.8"/>
+<text x="454.5" y="752" fill="#2d3142" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">UPGRADE</text>
+<text x="536" y="772" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">system-upgrade-controller</text>
+<text x="536" y="788" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">Plan k3s-server → v1.37.1</text>
+<text x="536" y="802" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">cordon · one node at a time</text>
+</g>
+<g data-node="traefik">
+<rect x="424" y="864" width="224" height="96" rx="6" fill="#f5f5f5"/>
+<rect x="424" y="864" width="224" height="96" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+<rect x="432" y="871" width="45" height="12" rx="2" fill="none" stroke="rgba(45,49,66,0.40)" stroke-width="0.8"/>
+<text x="454.5" y="880" fill="#2d3142" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">INGRESS</text>
+<text x="536" y="900" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Traefik (K3s built-in)</text>
+<text x="536" y="916" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">ServiceLB :80/:443 on the node</text>
+<text x="536" y="930" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">HTTP → HTTPS 301 middleware</text>
+</g>
+<g data-node="eso">
+<rect x="968" y="752" width="224" height="96" rx="6" fill="#f5f5f5"/>
+<rect x="968" y="752" width="224" height="96" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+<rect x="976" y="759" width="25" height="12" rx="2" fill="none" stroke="rgba(45,49,66,0.40)" stroke-width="0.8"/>
+<text x="988.5" y="768" fill="#2d3142" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">ESO</text>
+<text x="1080" y="788" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">External Secrets v2.11</text>
+<text x="1080" y="804" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">controller on hostNetwork</text>
+<text x="1080" y="818" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">ClusterSecretStore aws-ssm</text>
+<text x="1080" y="832" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">usable from ns monitoring only</text>
+</g>
+<g data-node="mon">
+<rect x="968" y="880" width="224" height="96" rx="6" fill="#f5f5f5"/>
+<rect x="968" y="880" width="224" height="96" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+<rect x="976" y="887" width="60" height="12" rx="2" fill="none" stroke="rgba(45,49,66,0.40)" stroke-width="0.8"/>
+<text x="1006.0" y="896" fill="#2d3142" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">MONITORING</text>
+<text x="1080" y="916" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Alloy + kube-state-metrics</text>
+<text x="1080" y="932" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">scrapes lab-api push + gitops</text>
+<text x="1080" y="946" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">pod logs via the K8s API</text>
+<text x="1080" y="960" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">token: ExternalSecret ← SSM</text>
+</g>
+<g data-node="roles">
+<rect x="1280" y="324" width="240" height="96" rx="6" fill="#f5f5f5"/>
+<rect x="1280" y="324" width="240" height="96" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+<rect x="1288" y="331" width="25" height="12" rx="2" fill="none" stroke="rgba(45,49,66,0.22)" stroke-width="0.8"/>
+<text x="1300.5" y="340" fill="#7a8399" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">IAM</text>
+<text x="1400" y="360" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">GitHub OIDC roles</text>
+<text x="1400" y="376" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">plan ← pull_request (read-only)</text>
+<text x="1400" y="390" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">apply ← env prod (rebuild.yml)</text>
+<text x="1400" y="404" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">lab ← env lab: start/stop/lease</text>
+</g>
+<g data-node="s3">
+<rect x="1280" y="452" width="240" height="96" rx="6" fill="#f5f5f5"/>
+<rect x="1280" y="452" width="240" height="96" rx="6" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+<rect x="1288" y="459" width="20" height="12" rx="2" fill="none" stroke="rgba(79,93,117,0.50)" stroke-width="0.8"/>
+<text x="1298.0" y="468" fill="#4f5d75" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">S3</text>
+<text x="1400" y="488" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Bootstrap: state + budget</text>
+<text x="1400" y="504" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">tfstate: bootstrap · platform</text>
+<text x="1400" y="518" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">instance · grafana (S3 lock)</text>
+<text x="1400" y="532" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">Budgets $5/mo · email alerts</text>
+</g>
+<g data-node="ssm">
+<rect x="1280" y="580" width="240" height="96" rx="6" fill="#f5f5f5"/>
+<rect x="1280" y="580" width="240" height="96" rx="6" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+<rect x="1288" y="587" width="25" height="12" rx="2" fill="none" stroke="rgba(79,93,117,0.50)" stroke-width="0.8"/>
+<text x="1300.5" y="596" fill="#4f5d75" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">SSM</text>
+<text x="1400" y="616" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">SSM Parameter Store</text>
+<text x="1400" y="632" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">/tailscale/oauth-client-secret</text>
+<text x="1400" y="646" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">/duckdns/token · /grafana-cloud/*</text>
+<text x="1400" y="660" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">/node-identity/* (16 files)</text>
+</g>
+<g data-node="noderole">
+<rect x="1280" y="760" width="240" height="80" rx="6" fill="#f5f5f5"/>
+<rect x="1280" y="760" width="240" height="80" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+<rect x="1288" y="767" width="25" height="12" rx="2" fill="none" stroke="rgba(45,49,66,0.22)" stroke-width="0.8"/>
+<text x="1300.5" y="776" fill="#7a8399" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">IAM</text>
+<text x="1400" y="796" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Node role + profile</text>
+<text x="1400" y="812" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">tailscale, duckdns, node identity</text>
+<text x="1400" y="826" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">may assume k3s-gitops-lab-eso</text>
+</g>
+<g data-node="sched">
+<rect x="1280" y="860" width="240" height="80" rx="6" fill="#f5f5f5"/>
+<rect x="1280" y="860" width="240" height="80" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+<rect x="1288" y="867" width="30" height="12" rx="2" fill="none" stroke="rgba(45,49,66,0.22)" stroke-width="0.8"/>
+<text x="1303.0" y="876" fill="#7a8399" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">CRON</text>
+<text x="1400" y="896" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">EventBridge Scheduler</text>
+<text x="1400" y="912" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">nightly-stop 23:00 Bucharest</text>
+<text x="1400" y="926" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">lease = start + 3 h · autostop</text>
+</g>
+<g data-node="grafana">
+<rect x="1604" y="904" width="176" height="112" rx="6" fill="#f5f5f5"/>
+<rect x="1604" y="904" width="176" height="112" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+<rect x="1612" y="911" width="30" height="12" rx="2" fill="none" stroke="rgba(45,49,66,0.22)" stroke-width="0.8"/>
+<text x="1627.0" y="920" fill="#7a8399" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">SAAS</text>
+<text x="1692" y="940" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Grafana Cloud</text>
+<text x="1692" y="956" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">Prometheus + Loki · free</text>
+<text x="1692" y="970" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">alert: pod not ready 2m</text>
+<text x="1692" y="984" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">→ email contact point</text>
+<text x="1692" y="998" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">as code: terraform/grafana</text>
+</g>
+<line x1="40" y1="1068" x2="1800" y2="1068" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+<text x="40" y="1090" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+<rect x="112" y="1082" width="14" height="10" rx="2" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1"/>
+<text x="144" y="1090" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Focal: source of truth, API gate</text>
+<rect x="312" y="1082" width="14" height="10" rx="2" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+<text x="344" y="1090" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Workload / pipeline step</text>
+<rect x="472" y="1082" width="14" height="10" rx="2" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+<text x="504" y="1090" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Store</text>
+<rect x="556" y="1082" width="14" height="10" rx="2" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+<text x="588" y="1090" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Managed / external service</text>
+<rect x="728" y="1082" width="14" height="10" rx="2" fill="rgba(79,93,117,0.10)" stroke="#7a8399" stroke-width="1"/>
+<text x="760" y="1090" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Person / client</text>
+<rect x="844" y="1082" width="14" height="10" rx="2" fill="rgba(235,108,54,0.03)" stroke="rgba(235,108,54,0.55)" stroke-width="1" stroke-dasharray="3,2"/>
+<text x="876" y="1090" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Security group = EC2 boundary</text>
+<line x1="112" y1="1105" x2="134" y2="1105" stroke="#2d3142" stroke-width="1.6" marker-end="url(#arrow-ink)"/>
+<text x="144" y="1108" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Push deploy path</text>
+<line x1="244" y1="1105" x2="266" y2="1105" stroke="#2d3142" stroke-width="1.6" stroke-dasharray="6,4" marker-end="url(#arrow-ink)"/>
+<text x="276" y="1108" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Pull deploy path (Argo CD)</text>
+<line x1="428" y1="1105" x2="450" y2="1105" stroke="#2e5aa8" stroke-width="1.4" marker-end="url(#arrow-link)"/>
+<text x="460" y="1108" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Public HTTPS request</text>
+<line x1="584" y1="1105" x2="606" y2="1105" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+<text x="616" y="1108" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Image, telemetry</text>
+<line x1="716" y1="1105" x2="738" y2="1105" stroke="#4f5d75" stroke-width="1.0" marker-end="url(#arrow)"/>
+<text x="748" y="1108" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">IAM, DNS, admin, control</text>
+<line x1="888" y1="1105" x2="910" y2="1105" stroke="#7a8399" stroke-width="1.2" stroke-dasharray="2,3"/>
+<line x1="912" y1="1099" x2="912" y2="1111" stroke="#eb6c36" stroke-width="2"/>
+<text x="920" y="1108" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Blocked ingress</text>
+</svg>
+    </div>
+    <div class="cards">
+      <div class="card">
+        <p class="eyebrow">Lifecycle · scripts/lab.sh</p>
+        <div class="card-header"><span class="card-dot coral"></span><h3>Run it only while you use it</h3></div>
+        <table class="cmd">
+          <tr><td>make start</td><td>start the node, set a 3 h lease, wait for K3s, DuckDNS and <code>/health</code></td></tr>
+          <tr><td>make extend</td><td>move the lease to 3 h from now (<code>LEASE_MINUTES</code> to change)</td></tr>
+          <tr><td>make stop</td><td>stop now and delete the lease; only the 12 GB disk is billed</td></tr>
+          <tr><td>make status</td><td>node state and IP, lease, nightly stop, tailnet</td></tr>
+          <tr><td>make up</td><td>plan, confirm, apply the instance stack, then Tailscale and Ansible (swap, k3s, ddns)</td></tr>
+          <tr><td>make down</td><td>destroy the instance stack; the platform stack stays</td></tr>
+          <tr><td>rebuild.yml</td><td>every Sunday (and on demand): destroy and rebuild the node from git, deploy <code>push</code>, check HTTPS, stop</td></tr>
+          <tr><td>Start lab button</td><td><code>lab.yml</code>: start, stop or extend from GitHub (also a phone), lease 1–4 h, role <code>github-lab</code></td></tr>
+          <tr><td>safety nets</td><td>session lease plus nightly stop at 23:00 Europe/Bucharest (Scheduler + autostop role)</td></tr>
+          <tr><td>cost</td><td>about $2.90/month stopping when idle (~40 h on <code>t4g.medium</code>); the weekly rebuild adds ~$0.07</td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <p class="eyebrow">Delivery</p>
+        <div class="card-header"><span class="card-dot ink"></span><h3>One commit, two paths</h3></div>
+        <ul>
+          <li><strong>Push</strong>: a merge touching <code>k8s/**</code> runs <code>deploy-push</code> (env production). It joins the tailnet as an ephemeral <code>tag:ci</code> device and applies as <code>github:…:environment:production</code>, bound to Role <code>github-deployer</code> in <code>push</code> only.</li>
+          <li><strong>Pull</strong>: Argo CD polls <code>main</code> about every 3 minutes and syncs <code>k8s/overlays/gitops</code> with prune and selfHeal. No CI credential reaches the cluster.</li>
+          <li>After each image publish, the bot PR changes <code>k8s/components/lab-api-image</code>, the pin both overlays share, so one merge moves both namespaces.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <p class="eyebrow">Trust boundaries</p>
+        <div class="card-header"><span class="card-dot muted"></span><h3>What the edges allow</h3></div>
+        <ul>
+          <li>Internet: only 80/443 to Traefik. No public 22 or 6443.</li>
+          <li>CI: GitHub OIDC for AWS, Tailscale and the K3s API. No stored keys.</li>
+          <li>IMDS hop limit 1: only the ESO controller (hostNetwork) gets node credentials, then assumes a role that reads <code>/grafana-cloud/*</code> only.</li>
+          <li>Argo CD AppProjects <code>platform</code> and <code>gitops</code> fence the repo, namespaces and resource kinds.</li>
+          <li>A rebuilt node restores its identity (K3s CAs, Tailscale state, SSH host keys) from SSM, so kubeconfigs, the CI CA file and the tailnet device survive.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="footer">
+      <span>k3s-gitops-lab · infrastructure overview · main @ 3eed723</span>
+      <span>2026-10-09</span>
+    </div>
+  </div>
+</body>
+</html>

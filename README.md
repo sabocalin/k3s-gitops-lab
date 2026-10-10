@@ -8,6 +8,10 @@ entirely from code, and then deliberately breaks it. Work is tracked on the
 
 ## Architecture
 
+Full diagrams (rendered from the repository at `3eed723`): [infrastructure](docs/architecture/k3s-gitops-lab-architecture.png) ([SVG](docs/architecture/k3s-gitops-lab-architecture.svg)) and [push vs pull delivery](docs/architecture/k3s-gitops-lab-delivery.png) ([SVG](docs/architecture/k3s-gitops-lab-delivery.svg)). The `.html` versions add cards for the lifecycle commands, both delivery paths and the trust boundaries.
+
+![Infrastructure](docs/architecture/k3s-gitops-lab-architecture.png)
+
 ```
 internet ──80/443──▶ k3s-gitops-lab.duckdns.org ─▶ EC2 t4g.medium (K3s)
                        ├─ Traefik ingress ─▶ FastAPI, namespace push (3-5 replicas)
