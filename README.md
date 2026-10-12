@@ -38,7 +38,7 @@ GitHub Actions ──bot PR──▶ main (new image digest) ◀──polls─�
   | `terraform/bootstrap` | state bucket, budget alert, alternate contacts, GitHub OIDC roles | permanent |
   | `terraform/platform` | VPC, three public subnets (one per zone; the node uses one), internet gateway, security groups, IAM roles (node, ESO, autostop) | permanent (all free). SSM parameters are created by hand; Terraform knows only their names |
   | `terraform/instance` | the EC2 instance | stopped when idle, destroyed and rebuilt weekly |
-  | `terraform/grafana` | Grafana Cloud alerting: the readiness alert and its email contact point (#49); run with `scripts/tf-grafana.sh` | permanent |
+  | `terraform/grafana` | Grafana Cloud: the readiness alert and its email contact point (#49), the lab-api and Platform dashboards (#138); run with `scripts/tf-grafana.sh` | permanent |
 - Images: built natively for arm64 in GitHub Actions, pushed to GHCR, signed.
 - Deploys: two paths to separate namespaces, push (`kubectl apply` from Actions)
   and pull (ArgoCD watching this repo). ArgoCD also manages cert-manager and itself
