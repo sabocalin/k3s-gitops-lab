@@ -58,3 +58,4 @@ every layer explained from the ground up, with links into the notes below.
 | #62 | [Nightly auto-stop (EventBridge Scheduler)](62-nightly-autostop.md) | 1 |
 | #63 | ["Start lab" button (workflow_dispatch)](63-start-lab-button.md) | 4 |
 | #64 | [Weekly rebuild from git (and the rebuild-from-zero runbook, #52)](64-weekly-rebuild.md) | 5 |
+| #138 | [Grafana dashboards as code: lab-api and platform](138-grafana-dashboards.md) | 5 |

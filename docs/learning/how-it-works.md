@@ -132,7 +132,7 @@ storage), encrypted, versioned and locked so two runs can't collide.
 | `terraform/bootstrap` | the state bucket, a $5/month budget alert, AWS contact addresses, the roles GitHub Actions may use | permanent; only ever applied from the laptop |
 | `terraform/platform` | the private network (VPC), its firewall rules, the server's permissions (IAM roles) | permanent, and free |
 | `terraform/instance` | the server itself, and its nightly stop schedule | stopped when idle, destroyed and rebuilt weekly |
-| `terraform/grafana` | the alert rule and its email contact in Grafana Cloud | permanent |
+| `terraform/grafana` | the alert rule, its email contact and the two dashboards in Grafana Cloud | permanent |
 
 Why separate: if the server were in the same stack as the network, one wrong
 `terraform destroy` could delete the network too. With separate stacks, the instance
@@ -553,8 +553,14 @@ every pod's logs ────────┘──▶ Grafana Cloud Loki (logs),
   or `gitops` is not ready for **2 minutes**, email. A normal rollout makes a pod not-ready
   for about 5 seconds, which never reaches 2 minutes. "No data" isn't alerted: that means
   monitoring is down, which is a different problem.
+- **Two dashboards**, also in Terraform, in the folder `GrafanaCloud / k3s-gitops-lab`:
+  **lab-api** (traffic, errors, latency, pods, CPU and memory against their limits, logs)
+  and **Platform** (every namespace's pods, restarts and logs). Each has a namespace
+  drop-down and a log search box. With the node stopped, widen the time range (top right)
+  to see past sessions.
 
-Read more: [48](48-alloy-grafana-cloud.md), [49](49-readiness-alert.md).
+Read more: [48](48-alloy-grafana-cloud.md), [49](49-readiness-alert.md),
+[138](138-grafana-dashboards.md).
 
 ---
 

@@ -20,8 +20,10 @@ data "grafana_folder" "grafana_cloud" {
   title = "GrafanaCloud"
 }
 
+# Holds the alert rule and, since #138, the dashboards (dashboards.tf). Renamed from
+# "k3s-gitops-lab alerts": the uid stays, so the rename is an in-place update.
 resource "grafana_folder" "lab" {
-  title             = "k3s-gitops-lab alerts"
+  title             = "k3s-gitops-lab"
   parent_folder_uid = data.grafana_folder.grafana_cloud.uid
 }
 

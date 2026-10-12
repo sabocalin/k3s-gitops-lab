@@ -67,8 +67,9 @@ the diagram, the cost model and the OIDC role table; `docs/architecture/` has fu
 - **Terraform, four stacks** with separate S3 state: `bootstrap` (state bucket, budget,
   GitHub OIDC roles; laptop-only, so CI can't widen its own permissions), `platform`
   (VPC, security groups, IAM for node/ESO/autostop), `instance` (the node; stopped when
-  idle, destroyed and rebuilt weekly), `grafana` (alerting; run through
-  `scripts/tf-grafana.sh`, which gets the token from SSM so it never lands in state).
+  idle, destroyed and rebuilt weekly), `grafana` (the alert and the dashboards; run
+  through `scripts/tf-grafana.sh`, which gets the token from SSM so it never lands in
+  state; `scripts/check-dashboards.sh` runs every dashboard query against Grafana Cloud).
   SSM parameters are created by hand; Terraform only knows their names.
 - **The node configures itself.** `terraform/instance/user_data.sh.tftpl` restores the
   node identity from SSM (`/k3s-gitops-lab/node-identity/*`: K3s CAs, SA keys, Tailscale
