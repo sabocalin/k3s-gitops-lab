@@ -103,7 +103,7 @@ makes `/ready` return 503 while `/health` stays 200, so it's not restarted.
 From pod failure to email: 3 min 07 s (the 2-minute hold, plus up to 30 s scrape, 30 s
 evaluation and 10 s group wait).
 
-Grafana reports the send as successful; arrival in the inbox is for the user to confirm.
+Grafana reported both sends as successful, and both emails (firing and resolved) arrived.
 
 Negative control: the other 5 pods' instances stayed Normal throughout. Only the
 drained pod alerted, and only after the 2-minute hold (Pending for exactly 2 minutes
