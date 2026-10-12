@@ -7,5 +7,5 @@
 apiVersion: kustomize.config.k8s.io/v1alpha1
 kind: Component
 images:
-- digest: sha256:584a0d118451a52ca49e1b6ba6e6b648607c870948838ba51b793f3414f9d0c4
+- digest: sha256:0c9c619933ce1f6ebe6fda8ac5d5b52de9f42cd46045a295416cfd0f41833e9d
   name: ghcr.io/sabocalin/k3s-gitops-lab/lab-api
