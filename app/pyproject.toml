@@ -6,7 +6,7 @@ requires-python = ">=3.13,<3.14"
 # Exact versions; uv.lock pins every transitive package with hashes. Dependabot (uv
 # ecosystem, 7-day cooldown) bumps both.
 dependencies = [
-  "fastapi==0.142.2",
+  "fastapi==0.146.0",
   "uvicorn==0.54.0",
   "prometheus-client==0.26.0",
 ]
@@ -14,8 +14,8 @@ dependencies = [
 [dependency-groups]
 dev = [
   "pytest==9.1.1",
-  "httpx2==2.13.1",  # the HTTP client behind the TestClient (Starlette deprecated httpx)
-  "ruff==0.16.10",
+  "httpx2==2.14.0",  # the HTTP client behind the TestClient (Starlette deprecated httpx)
+  "ruff==0.17.1",
 ]
 
 [build-system]
